@@ -23,7 +23,65 @@ local ROLE_ICONS = {
     HEALER="|TInterface\\LFGFrame\\UI-LFG-ICON-PORTRAITROLES:16:16:0:0:64:64:20:39:1:20|t",
     DAMAGER="|TInterface\\LFGFrame\\UI-LFG-ICON-PORTRAITROLES:16:16:0:0:64:64:20:39:22:41|t"
 }
-local DUNGEON_NAMES = {[2830]="ED",[2831]="AK",[2832]="DB",[2833]="OF",[2834]="PSF",[2835]="HOA",[2836]="SOW",[2837]="SG"}
+-- Dungeon MapIDs for Keystone display
+local DUNGEON_NAMES = {
+    -- TWW Season 3 (from C_ChallengeMode.GetMapTable)
+    [499]="PSF",   -- Priory of the Sacred Flame
+    [542]="EDA",   -- Eco-Dome Al'dani
+    [378]="HOA",   -- Halls of Atonement
+    [525]="FLOOD", -- Operation: Floodgate
+    [503]="AK",    -- Ara-Kara, City of Echoes
+    [392]="GMBT",  -- Tazavesh: So'leah's Gambit
+    [391]="STRT",  -- Tazavesh: Streets of Wonder
+    [505]="DB",    -- The Dawnbreaker
+    -- Alternative/Internal MapIDs (from actual keystones)
+    [2773]="FLOOD", -- Operation: Floodgate (internal ID)
+    -- TWW other dungeons
+    [501]="SV",    -- Stonevault
+    [502]="COT",   -- City of Threads
+    [500]="ROOK",  -- The Rookery
+    [504]="BREW",  -- Cinderbrew Meadery
+    [506]="DFC",   -- Darkflame Cleft
+    -- Shadowlands
+    [375]="NW",    -- Necrotic Wake
+    [379]="PF",    -- Plaguefall
+    [380]="SD",    -- Sanguine Depths
+    [381]="SOA",   -- Spires of Ascension
+    [382]="TOP",   -- Theater of Pain
+    [377]="DOS",   -- De Other Side
+    [376]="MISTS", -- Mists of Tirna Scithe
+    -- Dragonflight
+    [399]="RLP",   -- Ruby Life Pools
+    [400]="NO",    -- The Nokhud Offensive
+    [401]="AV",    -- The Azure Vault
+    [402]="AA",    -- Algeth'ar Academy
+    [403]="ULD",   -- Uldaman: Legacy of Tyr
+    [404]="NELTH", -- Neltharus
+    [405]="BH",    -- Brackenhide Hollow
+    [406]="HOI",   -- Halls of Infusion
+    [463]="DOTI",  -- Dawn of the Infinite: Galakrond's Fall
+    [464]="DOTI",  -- Dawn of the Infinite: Murozond's Rise
+    -- Cataclysm
+    [166]="GB",    -- Grim Batol
+    [456]="TOTT",  -- Throne of the Tides
+    [438]="VP",    -- Vortex Pinnacle
+    -- Legion
+    [199]="BRH",   -- Black Rook Hold
+    [210]="COS",   -- Court of Stars
+    [198]="DHT",   -- Darkheart Thicket
+    [200]="HOV",   -- Halls of Valor
+    [206]="NL",    -- Neltharion's Lair
+    [227]="KARA",  -- Return to Karazhan: Lower
+    [234]="KARA",  -- Return to Karazhan: Upper
+    -- BfA
+    [244]="AD",    -- Atal'Dazar
+    [245]="FH",    -- Freehold
+    [248]="WM",    -- Waycrest Manor
+    [251]="UR",    -- The Underrot
+    [353]="SIEGE", -- Siege of Boralus
+    [369]="MECH",  -- Operation: Mechagon - Junkyard
+    [370]="MECH",  -- Operation: Mechagon - Workshop
+}
 
 -- M+ Teleport Data
 local TELEPORT_DATA = {
@@ -219,19 +277,27 @@ local function GetKeystoneInfo(unit)
         local mapID = C_MythicPlus.GetOwnedKeystoneMapID()
         if mapID then
             local level = C_MythicPlus.GetOwnedKeystoneLevel() or 0
-            return {level=level, text=(DUNGEON_NAMES[mapID] or "???").." +"..level}
+            local dungeonName = DUNGEON_NAMES[mapID] or "???"
+            return {level=level, text=dungeonName.." +"..level, mapID=mapID}
         end
     else
         local idx = tonumber(unit:match("party(%d+)"))
         if idx then
             local mapID, level = C_MythicPlus.GetPartyKeystoneInfo(idx)
             if mapID and level and level > 0 then
-                return {level=level, text=(DUNGEON_NAMES[mapID] or "???").." +"..level}
+                local dungeonName = DUNGEON_NAMES[mapID] or "???"
+                return {level=level, text=dungeonName.." +"..level, mapID=mapID}
             end
         end
     end
     return nil
 end
+
+-- Cache for player specs (persists between refreshes)
+local specCache = {}
+
+-- Pending inspect requests
+local pendingInspects = {}
 
 local function GetGroupMembers()
     local members = {}
@@ -273,24 +339,53 @@ local function GetGroupMembers()
                 local role = UnitGroupRolesAssigned(unit) or "DAMAGER"
                 if role == "" or role == "NONE" then role = "DAMAGER" end
                 
-                local specText = "DPS"
-                if role == "TANK" then specText = "Tank"
-                elseif role == "HEALER" then specText = "Healer" end
+                local cleanName = name:gsub("%-.*", "")
+                local guid = UnitGUID(unit)
                 
+                -- Try multiple methods to get spec
+                local specText = nil
+                
+                -- Method 1: Check cache first
+                if specCache[cleanName] then
+                    specText = specCache[cleanName]
+                end
+                
+                -- Method 2: Try GetInspectSpecialization (requires prior NotifyInspect)
+                if not specText and guid then
+                    local specID = GetInspectSpecialization(unit)
+                    if specID and specID > 0 then
+                        local _, specName = GetSpecializationInfoByID(specID)
+                        if specName then
+                            specText = specName
+                            specCache[cleanName] = specText
+                        end
+                    end
+                end
+                
+                -- Method 3: Try to request inspect if not already pending
+                if not specText and CanInspect(unit) and not pendingInspects[cleanName] then
+                    pendingInspects[cleanName] = true
+                    NotifyInspect(unit)
+                end
+                
+                -- Fallback to role-based text if no spec available
+                if not specText then
+                    if role == "TANK" then specText = "Tank"
+                    elseif role == "HEALER" then specText = "Healer"
+                    else specText = "DPS" end
+                end
+                
+                -- Get keystone info
                 local key = nil
                 pcall(function() key = GetKeystoneInfo(unit) end)
-                
-                local cleanName = name
-                if name:find("-") then
-                    cleanName = name:gsub("%-.*", "")
-                end
                 
                 members[#members + 1] = {
                     name = cleanName,
                     class = class,
                     role = role,
                     spec = specText,
-                    keystone = key
+                    keystone = key,
+                    unit = unit  -- Store unit for later refresh
                 }
             end
         end
@@ -1138,15 +1233,15 @@ local function SetupMainFrame(f)
                 btn:SetAttribute("type", "spell")
                 btn:SetAttribute("spell", dungeon.spellID)
                 
-                -- Name label below button
+                -- Name label below button (white, no shadow)
                 local nameLabel = e.scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
                 nameLabel:SetPoint("TOP", btn, "BOTTOM", 0, -1)
                 nameLabel:SetText(dungeon.short)
-                nameLabel:SetFont("Fonts\\FRIZQT__.TTF", 9, "OUTLINE")
+                nameLabel:SetFont("Fonts\\FRIZQT__.TTF", 9)  -- No OUTLINE = no shadow
                 if isKnown then
-                    nameLabel:SetTextColor(0.8, 0.8, 0.8)
+                    nameLabel:SetTextColor(1, 1, 1)  -- White for unlocked
                 else
-                    nameLabel:SetTextColor(0.4, 0.4, 0.4)
+                    nameLabel:SetTextColor(0.5, 0.5, 0.5)  -- Gray for locked
                 end
                 btn.label = nameLabel
                 
@@ -1269,7 +1364,31 @@ SlashCmdList["KDT"] = function(msg)
     elseif cmd == "ready" then if IsInGroup() then DoReadyCheck() end
     elseif cmd == "post" then PostToChat()
     elseif cmd == "share" then ShareBlacklist()
-    else print("|cFFFF0000[Kryos]|r /kdt, /kdt bl, /kdt tp, /kdt cd, /kdt ready, /kdt post, /kdt share") end
+    elseif cmd == "debug" then
+        -- Debug: Show your keystone MapID
+        local mapID = C_MythicPlus.GetOwnedKeystoneMapID()
+        local level = C_MythicPlus.GetOwnedKeystoneLevel()
+        if mapID then
+            local name = C_ChallengeMode.GetMapUIInfo(mapID)
+            print("|cFF00FFFF[Kryos Debug]|r Your Keystone:")
+            print("  MapID: |cFFFFFF00" .. mapID .. "|r")
+            print("  Name: |cFFFFFF00" .. (name or "Unknown") .. "|r")
+            print("  Level: |cFFFFFF00+" .. (level or 0) .. "|r")
+            print("  Current mapping: |cFFFFFF00" .. (DUNGEON_NAMES[mapID] or "NOT FOUND") .. "|r")
+        else
+            print("|cFF00FFFF[Kryos Debug]|r You don't have a keystone")
+        end
+        -- Also show all season dungeons
+        print("|cFF00FFFF[Kryos Debug]|r Current Season Dungeons:")
+        local mapIDs = C_ChallengeMode.GetMapTable()
+        if mapIDs then
+            for _, id in ipairs(mapIDs) do
+                local dname = C_ChallengeMode.GetMapUIInfo(id)
+                local mapped = DUNGEON_NAMES[id] or "MISSING"
+                print("  [" .. id .. "] " .. (dname or "?") .. " = " .. mapped)
+            end
+        end
+    else print("|cFFFF0000[Kryos]|r /kdt, /kdt bl, /kdt tp, /kdt cd, /kdt ready, /kdt post, /kdt share, /kdt debug") end
 end
 
 -- ==================== EVENTS ====================
@@ -1277,6 +1396,17 @@ local eventFrame = CreateFrame("Frame")
 eventFrame:RegisterEvent("ADDON_LOADED")
 eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
 eventFrame:RegisterEvent("CHAT_MSG_ADDON")
+eventFrame:RegisterEvent("INSPECT_READY")
+
+-- Request inspection for party members to get their specs
+local function RequestPartyInspect()
+    for i = 1, 4 do
+        local unit = "party"..i
+        if UnitExists(unit) and UnitIsConnected(unit) and CheckInteractDistance(unit, 1) then
+            NotifyInspect(unit)
+        end
+    end
+end
 
 eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, _, arg4)
     if event == "ADDON_LOADED" and arg1 == addonName then
@@ -1348,6 +1478,37 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, _, arg4)
     elseif event == "GROUP_ROSTER_UPDATE" then
         CheckBlacklistAlert()
         CheckNewMembers()
+        -- Request inspect for party members when roster changes
+        C_Timer.After(0.5, RequestPartyInspect)
+        if MainFrame and MainFrame:IsShown() and MainFrame.currentTab == "group" then
+            MainFrame:RefreshGroup()
+        end
+        
+    elseif event == "INSPECT_READY" then
+        -- arg1 is the GUID of the inspected unit
+        local guid = arg1
+        if guid then
+            -- Find the unit with this GUID and cache their spec
+            for i = 1, 4 do
+                local unit = "party"..i
+                if UnitExists(unit) and UnitGUID(unit) == guid then
+                    local specID = GetInspectSpecialization(unit)
+                    if specID and specID > 0 then
+                        local _, specName = GetSpecializationInfoByID(specID)
+                        if specName then
+                            local name = UnitName(unit)
+                            if name then
+                                local cleanName = name:gsub("%-.*", "")
+                                specCache[cleanName] = specName
+                                pendingInspects[cleanName] = nil
+                            end
+                        end
+                    end
+                    break
+                end
+            end
+        end
+        -- Refresh group display when inspect data is ready
         if MainFrame and MainFrame:IsShown() and MainFrame.currentTab == "group" then
             MainFrame:RefreshGroup()
         end

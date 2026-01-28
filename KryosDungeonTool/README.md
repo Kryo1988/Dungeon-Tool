@@ -1,153 +1,197 @@
-# Kryos Dungeon Tool
+# Kryos Blacklist - WoW Addon
 
-A World of Warcraft addon for Mythic+ dungeon groups that helps you manage your group composition, track important utilities, maintain a blacklist of players, and quickly teleport to dungeons.
+Ein professionelles World of Warcraft Addon mit vollständigem GUI, Custom Sound und Share-Funktion, das dich warnt, wenn ein Spieler von deiner Blacklist der Gruppe beitritt.
 
-![Version](https://img.shields.io/badge/version-1.3-blue)
-![WoW Version](https://img.shields.io/badge/WoW-The%20War%20Within-orange)
+## 🎯 Features
 
-## Features
+### ✨ Vollständiges GUI
+- **Grafische Oberfläche** zum Verwalten der Blacklist
+- **Minimap-Button** zum schnellen Öffnen des GUIs (verschiebbar!)
+- **Spieler hinzufügen** mit Name und Grund
+- **Gründe bearbeiten** - ändere den Grund jederzeit mit einem Klick
+- **Liste anzeigen** mit allen geblacklisteten Spielern und ihren Gründen
+- **Spieler löschen** direkt aus der Liste per Knopfdruck
+- **Komplette Liste leeren** mit Sicherheitsabfrage
+- **Custom Sound Toggle** - zwischen eigenem Sound und Standard-Sound wählen
 
-### Group Check
-- **Group Overview**: See your group composition at a glance (Tanks, Healers, DPS)
-- **Utility Tracking**: Instantly see if your group has Battle Rez and Bloodlust
-- **Keystone Display**: View all party members' Mythic+ keystones
-- **Class Stacking Warning**: Get notified when multiple players share the same class
-- **Member List**: Detailed view of all group members with role, class, spec, and utilities
+### 🔊 Custom Sound Alert
+- **Eigener Alarm-Sound** (intruder.mp3) für Warnungen
+- **Sound-Toggle** im GUI zum An/Ausschalten
+- Demo-Funktion beim Umschalten
 
-### Quick Actions
-- **Ready Check**: Start a ready check with one click
-- **Countdown**: Customizable countdown timer (1-60 seconds)
-- **Post to Chat**: Share group composition in party/raid chat
-- **Auto-Post**: Automatically announce new players joining your group with their spec and utilities
+### 🔔 Automatische Warnungen
+- Signalton wenn ein geblacklisteter Spieler der Gruppe beitritt (nur 1x pro Session!)
+- Chat-Warnung mit Spielername und Grund
+- Bildschirm-Alert im Raid-Warning Style
 
-### Blacklist System
-- **Add Players**: Blacklist players with a custom reason
-- **Visual Warnings**: Blacklisted players are highlighted in the group list
-- **Tooltip Integration**: See blacklist status when hovering over players
-- **Join Alerts**: Get notified (with optional custom sound) when a blacklisted player joins your group
-- **Right-Click Menu**: Quickly add/remove players via right-click context menu
-- **Share List**: Share your blacklist with group members who also have the addon
+### 📤 Share-Funktion
+- **Teile deine Blacklist** mit anderen Addon-Nutzern in deiner Gruppe/Raid/Gilde
+- **Empfange Blacklists** von anderen Spielern
+- **Bestätigungs-Dialog** bevor fremde Listen hinzugefügt werden
+- Automatische Markierung woher die Einträge kommen
 
-### M+ Teleports (NEW in v1.3)
-- **Season 3 Dungeons**: Quick access to all current M+ dungeon teleports
-- **Visual Status**: See which teleports you have unlocked (colored) vs locked (grayed out)
-- **One-Click Teleport**: Click any unlocked dungeon to instantly teleport
-- **Tooltips**: Hover to see dungeon name and unlock status
+### 🖱️ Rechtsklick-Integration
+- Rechtsklick auf Spieler → **"Zur Blacklist hinzufügen"** (direkt, kein Dialog)
+- Rechtsklick auf Spieler → **"Von Blacklist entfernen"**
+- Funktioniert überall: Gruppe, Raid, Freundesliste, Feinde
 
-#### Current Season Dungeons:
-- Ara-Kara
-- Dawnbreaker
-- Eco-Dome
-- Halls of Attonement
-- Operation: Floodgate
-- Priory of the Sacred Flame
-- Tazavesh: So'leah's Gambit
-- Tazavesh: Streets of Wonder
+## 📦 Installation
 
-## Installation
+1. Erstelle einen Ordner namens `KryosBlacklist` in deinem WoW AddOns-Verzeichnis:
+   - **Windows:** `C:\Program Files (x86)\World of Warcraft\_retail_\Interface\AddOns\KryosBlacklist\`
+   - **Mac:** `/Applications/World of Warcraft/_retail_/Interface/AddOns/KryosBlacklist/`
 
-1. Download the latest release
-2. Extract the `KryosDungeonTool` folder to your WoW AddOns directory:
-   - Windows: `C:\Program Files (x86)\World of Warcraft\_retail_\Interface\AddOns\`
-   - macOS: `/Applications/World of Warcraft/_retail_/Interface/AddOns/`
-3. Restart WoW or type `/reload` in-game
+2. Kopiere **alle drei Dateien** in diesen Ordner:
+   - `KryosBlacklist.toc`
+   - `KryosBlacklist.lua`
+   - `intruder.mp3` (Custom Sound-Datei)
 
-### Custom Alert Sound (Optional)
-To use a custom alert sound for blacklisted players:
-1. Place an audio file named `intruder.mp3` in the addon folder
-2. Enable "Custom Sound" checkbox in the Blacklist tab
+3. Starte WoW neu oder nutze `/reload`
 
-## Usage
+**WICHTIG:** Der Ordner muss genau `KryosBlacklist` heißen!
 
-### Opening the Addon
-- Click the **minimap button** (Left-click: Group Check, Right-click: Blacklist)
-- Type `/kdt` or `/kryos` in chat
-- Open the **Group Finder** (the addon opens automatically)
+## 🎮 Verwendung
 
-### Slash Commands
-| Command | Description |
-|---------|-------------|
-| `/kdt` | Open Group Check panel |
-| `/kdt bl` | Open Blacklist panel |
-| `/kdt tp` | Open M+ Teleports panel |
-| `/kdt cd` | Start countdown |
-| `/kdt ready` | Initiate ready check |
-| `/kdt post` | Post group info to chat |
-| `/kdt share` | Share blacklist with group |
+### GUI öffnen
+Es gibt **3 Wege** das GUI zu öffnen:
 
-### Chat Output Example
-When using "Post to Chat":
+1. **Minimap-Button** (empfohlen!)
+   - Klicke auf den Button an deiner Minimap
+   - Du kannst ihn mit gedrückter linker Maustaste verschieben
+
+2. **Slash-Befehle**
 ```
-====== GROUP CHECK ======
-Playername - Rogue (Outlaw) | ED +15
-Tankname - Paladin (Protection) [BR] | AK +12
-Healername - Shaman (Restoration) [BL]
-[X] NO Battle Rez!
-=========================
+/blacklist
+/bl
 ```
 
-When Auto-Post announces a new player:
-```
-[+] Playername joined (Shaman - Restoration) - brings BL
-```
+3. **Rechtsklick auf Spieler**
+   - Rechtsklick → "Zur Blacklist hinzufügen"
+   - Spieler wird direkt mit Standardgrund hinzugefügt
 
-## Supported Utilities
+### Im GUI kannst du:
+1. **Spieler hinzufügen:**
+   - Name eingeben
+   - Grund eingeben (optional)
+   - "Hinzufügen" klicken
 
-### Battle Rez Classes
-- Death Knight
-- Druid
-- Paladin
-- Warlock
+2. **Blacklist ansehen:**
+   - Alle Spieler mit ihren Gründen in einer scrollbaren Liste
 
-### Bloodlust Classes
-- Evoker
-- Hunter
-- Mage
-- Shaman
+3. **Grund bearbeiten:**
+   - "Bearbeiten"-Button neben dem Spieler klicken
+   - Grund ändern im Dialog
+   - Enter drücken oder "Speichern" klicken
 
-## Dungeon Abbreviations
-| Abbreviation | Dungeon |
-|--------------|---------|
-| AK | Ara-Kara |
-| DB | Darkflame Cleft |
-| ED | The Dawnbreaker |
-| HOA | Halls of Atonement |
-| OF | Operation: Floodgate |
-| PSF | Priory of the Sacred Flame |
-| SG | Stonevault |
-| SOW | Siege of Boralus |
+4. **Spieler löschen:**
+   - "Löschen"-Button neben dem Spieler klicken
 
-## Changelog
+5. **Liste leeren:**
+   - "Liste leeren" Button unten links (mit Sicherheitsabfrage)
 
-### Version 1.3
-- **NEW: M+ Teleports Tab** - Quick access to all Season 3 dungeon teleports
-- Visual indication of unlocked vs locked teleports
-- One-click teleportation to any unlocked dungeon
-- Spell tooltips on hover
+6. **Blacklist teilen:**
+   - "Liste teilen" Button klicken
+   - Deine Liste wird an alle in deiner Gruppe/Raid/Gilde mit dem Addon gesendet
+   - Andere erhalten einen Dialog zum Akzeptieren
 
-### Version 1.2
-- Fixed group member display issues
-- Added Auto-Post feature for player joins
-- Improved chat posting with rate-limit handling
-- Fixed panel overlap when switching tabs
-- Added blacklist sharing between group members
-- Custom alert sound support
+7. **Sound umschalten:**
+   - Checkbox "Custom Sound verwenden" an/aus
+   - Demo-Sound wird beim Umschalten abgespielt
 
-### Version 1.1
-- Initial release
-- Group composition tracking
-- Blacklist system
-- Keystone display
-- Ready check and countdown integration
+### Slash-Befehle (Alternative zum GUI)
 
-## License
+| Befehl | Beschreibung | Beispiel |
+|--------|--------------|----------|
+| `/blacklist` | GUI öffnen | `/bl` |
+| `/blacklist add <n> [Grund]` | Spieler hinzufügen | `/bl add Noobkiller Ninja Looter` |
+| `/blacklist remove <n>` | Spieler entfernen | `/bl remove Noobkiller` |
+| `/blacklist list` | Liste im Chat anzeigen | `/bl list` |
+| `/blacklist clear` | Liste leeren | `/bl clear` |
 
-This addon is provided free of charge for personal use.
+## 🔊 Warnungen
 
-## Support
+Wenn ein geblacklisteter Spieler deiner Gruppe beitritt:
+- ⚠️ **Signalton** (Custom oder Standard)
+- 💬 **Chat-Nachricht:** "BLACKLIST ALARM: [Name] ist deiner Gruppe beigetreten!"
+- 💬 **Grund anzeigen:** "Grund: [dein eingegebener Grund]"
+- 📺 **Bildschirm-Warnung** (rote Nachricht oben am Bildschirm)
+- ✅ **Nur 1x pro Session** - keine nervigen Wiederholungen!
 
-If you encounter any issues or have suggestions, please open an issue on the repository.
+## 💾 Datenspeicherung
 
----
+- Die Blacklist wird **automatisch gespeichert**
+- Bleibt nach Logout/Restart erhalten
+- Für jeden Spieler wird gespeichert:
+  - Name
+  - Grund
+  - Zeitstempel (wann hinzugefügt)
 
-*Made for the WoW community by Kryos*
+## 🔧 Technische Details
+
+- **Interface Version:** 120000 (Patch 12.0.0)
+- **Saved Variables:** KryosBlacklistDB
+- Funktioniert in Dungeongruppen und Raids
+- Servernamen werden automatisch entfernt
+
+## ❓ Häufige Fragen
+
+**Q: Kann ich einen Grund nachträglich ändern?**
+A: Ja! Klicke einfach auf den "Bearbeiten"-Button neben dem Spieler in der Liste.
+
+**Q: Warum hört die Warnung nicht mehr auf?**
+A: Das wurde gefixt! Jeder Spieler löst nur EINMAL pro Session eine Warnung aus.
+
+**Q: Wie viele Spieler kann ich auf die Blacklist setzen?**
+A: Unbegrenzt (praktisch gesehen mehrere hundert ohne Performance-Probleme).
+
+**Q: Sehen andere Spieler meine Blacklist?**
+A: Nein, die Blacklist ist nur lokal auf deinem Computer gespeichert - außer du teilst sie explizit über die Share-Funktion.
+
+**Q: Was passiert mit meiner alten BlacklistAlert?**
+A: Deine Daten bleiben erhalten! Lösche einfach den alten BlacklistAlert-Ordner nach der Installation von KryosBlacklist.
+
+**Q: Funktioniert es auch in Classic/TBC/Wrath?**
+A: Du müsstest die Interface-Version in der .toc Datei anpassen.
+
+## 🆕 Neu in Version 3.1
+
+- ✏️ **Grund bearbeiten funktioniert jetzt korrekt** - Voller Dialog mit Enter-Support
+- 🔕 **Keine mehrfachen Warnungen mehr** - Nur 1x Alarm pro Spieler pro Session
+- 🎨 **Addon umbenannt** zu "Kryos Blacklist"
+- 🔊 **Custom Sound Support** - Eigener Alarm-Sound mit Toggle
+- 📤 **Share-Funktion** - Teile deine Blacklist mit anderen
+- 📥 **Empfange Listen** von anderen Spielern
+- 🎵 **Sound-Toggle** im GUI
+- 🗺️ **Minimap-Button** (verschiebbar!)
+- 🖱️ **Verbessertes Rechtsklick-Menü**
+- ✨ Vollständiges GUI mit Scroll-Liste
+
+## 💡 Tipps
+
+- **Minimap-Button:** Du kannst ihn durch Ziehen verschieben
+- **Schnellzugriff:** Der Minimap-Button ist der schnellste Weg
+- **Bearbeiten:** Der Edit-Dialog funktioniert jetzt perfekt - Enter speichert!
+- **Keine Spam-Warnungen mehr:** Jeder Spieler löst nur einmal eine Warnung aus
+
+## 🐛 Troubleshooting
+
+**GUI öffnet sich nicht?**
+- Prüfe mit `/reload` ob das Addon geladen ist
+- Schaue ins Interface-Addon-Menü ob "Kryos Blacklist" aktiviert ist
+
+**Bearbeiten-Button funktioniert nicht?**
+- Dieses Problem wurde in Version 3.1 behoben
+- Stelle sicher, dass du die neueste Version hast
+
+**Sound wird nicht abgespielt?**
+- Stelle sicher, dass die intruder.mp3 Datei im KryosBlacklist-Ordner liegt
+- Pfad: `Interface\AddOns\KryosBlacklist\intruder.mp3`
+
+**Warnung kommt mehrfach?**
+- Dieses Problem wurde in Version 3.1 behoben
+
+## 🙏 Credits
+
+Entwickelt von **Kryos** für die WoW-Community.
+
+Viel Erfolg beim Dungeon-Farming! 🎮
