@@ -124,6 +124,11 @@ When Auto-Post announces a new player:
 
 ## Changelog
 
+### Version 1.4
+- Refactored into modular file structure
+- Cleaner code organization
+- Easier maintenance and updates
+- 
 ### Version 1.3
 - **NEW: M+ Teleports Tab** - Quick access to all Season 3 dungeon teleports
 - Visual indication of unlocked vs locked teleports
