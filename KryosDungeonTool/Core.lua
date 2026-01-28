@@ -136,3 +136,102 @@ function KDT:CreateInput(parent, width)
     
     return box
 end
+
+-- ==================== EDIT REASON DIALOG ====================
+function KDT:ShowEditReasonDialog(playerName, mainFrame)
+    -- Create dialog if it doesn't exist
+    if not self.editDialog then
+        local dialog = CreateFrame("Frame", "KryosEditDialog", UIParent, "BackdropTemplate")
+        dialog:SetSize(350, 120)
+        dialog:SetPoint("CENTER")
+        dialog:SetFrameStrata("DIALOG")
+        dialog:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8X8",
+            edgeFile = "Interface\\Buttons\\WHITE8X8",
+            edgeSize = 2
+        })
+        dialog:SetBackdropColor(0.1, 0.1, 0.12, 0.95)
+        dialog:SetBackdropBorderColor(0.3, 0.3, 0.35, 1)
+        dialog:Hide()
+        
+        -- Title
+        dialog.title = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        dialog.title:SetPoint("TOP", 0, -12)
+        
+        -- Input
+        dialog.input = CreateFrame("EditBox", nil, dialog, "BackdropTemplate")
+        dialog.input:SetSize(310, 24)
+        dialog.input:SetPoint("TOP", 0, -40)
+        dialog.input:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8X8",
+            edgeFile = "Interface\\Buttons\\WHITE8X8",
+            edgeSize = 1
+        })
+        dialog.input:SetBackdropColor(0.05, 0.05, 0.07, 1)
+        dialog.input:SetBackdropBorderColor(0.2, 0.2, 0.25, 1)
+        dialog.input:SetFontObject("GameFontNormal")
+        dialog.input:SetTextInsets(8, 8, 0, 0)
+        dialog.input:SetAutoFocus(true)
+        dialog.input:SetMaxLetters(200)
+        
+        -- Save Button
+        dialog.saveBtn = self:CreateButton(dialog, "Save", 80, 24)
+        dialog.saveBtn:SetPoint("BOTTOMLEFT", 60, 15)
+        dialog.saveBtn:SetBackdropColor(0.15, 0.45, 0.15, 1)
+        dialog.saveBtn:SetScript("OnEnter", function(self) self:SetBackdropColor(0.2, 0.55, 0.2, 1) end)
+        dialog.saveBtn:SetScript("OnLeave", function(self) self:SetBackdropColor(0.15, 0.45, 0.15, 1) end)
+        
+        -- Cancel Button
+        dialog.cancelBtn = self:CreateButton(dialog, "Cancel", 80, 24)
+        dialog.cancelBtn:SetPoint("BOTTOMRIGHT", -60, 15)
+        dialog.cancelBtn:SetBackdropColor(0.5, 0.15, 0.15, 1)
+        dialog.cancelBtn:SetScript("OnClick", function() dialog:Hide() end)
+        dialog.cancelBtn:SetScript("OnEnter", function(self) self:SetBackdropColor(0.6, 0.2, 0.2, 1) end)
+        dialog.cancelBtn:SetScript("OnLeave", function(self) self:SetBackdropColor(0.5, 0.15, 0.15, 1) end)
+        
+        -- ESC to close
+        dialog:SetScript("OnKeyDown", function(self, key)
+            if key == "ESCAPE" then
+                self:Hide()
+            end
+        end)
+        dialog:EnableKeyboard(true)
+        
+        self.editDialog = dialog
+    end
+    
+    local dialog = self.editDialog
+    
+    -- Set up for this player
+    dialog.title:SetText("Edit reason for |cFFFFFF00" .. playerName .. "|r")
+    dialog.input:SetText(self.DB.blacklist[playerName] and self.DB.blacklist[playerName].reason or "")
+    dialog.input:HighlightText()
+    dialog.playerName = playerName
+    dialog.mainFrame = mainFrame
+    
+    -- Save action
+    dialog.saveBtn:SetScript("OnClick", function()
+        local newReason = dialog.input:GetText()
+        local pName = dialog.playerName
+        if newReason and pName and KDT.DB.blacklist[pName] then
+            KDT.DB.blacklist[pName].reason = newReason
+            KDT:PrintSuccess("Updated reason for " .. pName)
+            dialog:Hide()
+            if dialog.mainFrame then
+                dialog.mainFrame:RefreshBlacklist()
+            end
+        end
+    end)
+    
+    -- Enter to save
+    dialog.input:SetScript("OnEnterPressed", function()
+        dialog.saveBtn:Click()
+    end)
+    
+    dialog.input:SetScript("OnEscapePressed", function()
+        dialog:Hide()
+    end)
+    
+    dialog:Show()
+    dialog.input:SetFocus()
+end

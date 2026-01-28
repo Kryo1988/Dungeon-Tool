@@ -149,7 +149,7 @@ function KDT:SetupBlacklistRefresh(f)
             
             local reason = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
             reason:SetPoint("TOPLEFT", 10, -24)
-            reason:SetWidth(550)
+            reason:SetWidth(480)
             reason:SetJustifyH("LEFT")
             reason:SetText(entry.data.reason or "No reason")
             reason:SetTextColor(0.5, 0.5, 0.5)
@@ -163,6 +163,17 @@ function KDT:SetupBlacklistRefresh(f)
             end)
             delBtn:SetScript("OnEnter", function(self) self:SetBackdropColor(0.6, 0.2, 0.2, 1) end)
             delBtn:SetScript("OnLeave", function(self) self:SetBackdropColor(0.5, 0.15, 0.15, 1) end)
+            
+            local editBtn = KDT:CreateButton(row, "Edit", 45, 20)
+            editBtn:SetPoint("RIGHT", delBtn, "LEFT", -5, 0)
+            editBtn:SetBackdropColor(0.3, 0.3, 0.5, 1)
+            editBtn.playerName = entry.name
+            editBtn:SetScript("OnClick", function(self)
+                local playerName = self.playerName
+                KDT:ShowEditReasonDialog(playerName, f)
+            end)
+            editBtn:SetScript("OnEnter", function(self) self:SetBackdropColor(0.4, 0.4, 0.6, 1) end)
+            editBtn:SetScript("OnLeave", function(self) self:SetBackdropColor(0.3, 0.3, 0.5, 1) end)
             
             self.blRows[#self.blRows + 1] = row
             yOffset = yOffset - 45

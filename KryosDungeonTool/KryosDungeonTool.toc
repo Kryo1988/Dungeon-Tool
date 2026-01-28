@@ -4,6 +4,7 @@
 ## Author: Kryos
 ## Version: 1.4
 ## SavedVariables: KryosDungeonToolDB
+## IconTexture: Interface\Icons\Spell_Shadow_SealOfKings
 
 # Core
 Core.lua
