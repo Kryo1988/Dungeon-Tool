@@ -1,4 +1,4 @@
--- Kryos Dungeon Tool v1.2
+-- Kryos Dungeon Tool v1.3
 local addonName = "KryosDungeonTool"
 local DB
 local alreadyAlerted = {}
@@ -24,6 +24,135 @@ local ROLE_ICONS = {
     DAMAGER="|TInterface\\LFGFrame\\UI-LFG-ICON-PORTRAITROLES:16:16:0:0:64:64:20:39:22:41|t"
 }
 local DUNGEON_NAMES = {[2830]="ED",[2831]="AK",[2832]="DB",[2833]="OF",[2834]="PSF",[2835]="HOA",[2836]="SOW",[2837]="SG"}
+
+-- M+ Teleport Data
+local TELEPORT_DATA = {
+    -- TWW Season 3
+    {category = "TWW Season 3", dungeons = {
+        {name = "Ara-Kara", short = "AK", spellID = 445417, icon = "Interface\\Icons\\inv_achievement_dungeon_arak-ara"},
+        {name = "Dawnbreaker", short = "DAWN", spellID = 445414, icon = "Interface\\Icons\\inv_achievement_dungeon_dawnbreaker"},
+        {name = "Eco-Dome", short = "EDA", spellID = 1237215, icon = "Interface\\Icons\\inv_112_achievement_dungeon_ecodome"},
+        {name = "Halls of Atonement", short = "HOA", spellID = 354465, icon = "Interface\\Icons\\achievement_dungeon_hallsofattonement"},
+        {name = "Operation: Floodgate", short = "FLOOD", spellID = 1216786, icon = "Interface\\Icons\\inv_achievement_dungeon_waterworks"},
+        {name = "Priory of the Sacred Flame", short = "PSF", spellID = 445444, icon = "Interface\\Icons\\inv_achievement_dungeon_prioryofthesacredflame"},
+        {name = "Tazavesh: Gambit", short = "GMBT", spellID = 367416, icon = "Interface\\Icons\\achievement_dungeon_brokerdungeon"},
+        {name = "Tazavesh: Streets", short = "STRT", spellID = 367416, icon = "Interface\\Icons\\Achievement_dungeon_theotherside_dealergexa"},
+    }},
+    -- Midnight
+    {category = "Midnight", dungeons = {
+        {name = "Dauntless Stronghold", short = "DON", spellID = 11, icon = "Interface\\Icons\\inv_achievement_dungeon_proveyourworth"},
+        {name = "Magister's Terrace", short = "MT", spellID = 1254572, icon = "Interface\\Icons\\inv_achievement_dungeon_magistersterrace"},
+        {name = "Mai'sara Caverns", short = "MC", spellID = 1254559, icon = "Interface\\Icons\\inv_achievement_dungeon_maisarahills"},
+        {name = "Murder Row", short = "MR", spellID = 4, icon = "Interface\\Icons\\inv_achievement_dungeon_murderrow"},
+        {name = "Nexus Point Xenas", short = "NPX", spellID = 1254563, icon = "Interface\\Icons\\inv_achievement_dungeon_nexuspointxenas"},
+        {name = "Blinding Vale", short = "BV", spellID = 3, icon = "Interface\\Icons\\inv_achievement_dungeon_lightbloom"},
+        {name = "Voidscar Arena", short = "VA", spellID = 1, icon = "Interface\\Icons\\inv_achievement_dungeon_voidscararena"},
+        {name = "Windrunner Spire", short = "WS", spellID = 1254400, icon = "Interface\\Icons\\inv_achievement_dungeon_windrunnerspire"},
+    }},
+    -- TWW Dungeons
+    {category = "TWW Dungeons", dungeons = {
+        {name = "Ara-Kara", short = "AK", spellID = 445417, icon = "Interface\\Icons\\inv_achievement_dungeon_arak-ara"},
+        {name = "Cinderbrew Meadery", short = "BREW", spellID = 445440, icon = "Interface\\Icons\\inv_achievement_dungeon_cinderbrewmeadery"},
+        {name = "City of Threads", short = "COT", spellID = 445416, icon = "Interface\\Icons\\inv_achievement_dungeon_cityofthreads"},
+        {name = "Darkflame Cleft", short = "DFC", spellID = 445441, icon = "Interface\\Icons\\inv_achievement_dungeon_darkflamecleft"},
+        {name = "Dawnbreaker", short = "DAWN", spellID = 445414, icon = "Interface\\Icons\\inv_achievement_dungeon_dawnbreaker"},
+        {name = "Eco-Dome", short = "EDA", spellID = 1237215, icon = "Interface\\Icons\\inv_112_achievement_dungeon_ecodome"},
+        {name = "Operation: Floodgate", short = "FLOOD", spellID = 1216786, icon = "Interface\\Icons\\inv_achievement_dungeon_waterworks"},
+        {name = "Priory of the Sacred Flame", short = "PSF", spellID = 445444, icon = "Interface\\Icons\\inv_achievement_dungeon_prioryofthesacredflame"},
+        {name = "The Rookery", short = "ROOK", spellID = 445443, icon = "Interface\\Icons\\inv_achievement_dungeon_rookery"},
+        {name = "Stonevault", short = "SV", spellID = 445269, icon = "Interface\\Icons\\inv_achievement_dungeon_stonevault"},
+    }},
+    -- Shadowlands
+    {category = "Shadowlands", dungeons = {
+        {name = "De Other Side", short = "DOS", spellID = 354468, icon = "Interface\\Icons\\achievement_dungeon_theotherside"},
+        {name = "Halls of Atonement", short = "HOA", spellID = 354465, icon = "Interface\\Icons\\achievement_dungeon_hallsofattonement"},
+        {name = "Mists of Tirna Scithe", short = "MISTS", spellID = 354464, icon = "Interface\\Icons\\achievement_dungeon_mistsoftirnascithe"},
+        {name = "The Necrotic Wake", short = "NW", spellID = 354462, icon = "Interface\\Icons\\achievement_dungeon_theneroticwake"},
+        {name = "Plaguefall", short = "PF", spellID = 354463, icon = "Interface\\Icons\\achievement_dungeon_plaguefall"},
+        {name = "Sanguine Depths", short = "SD", spellID = 354469, icon = "Interface\\Icons\\achievement_dungeon_sanguinedepths"},
+        {name = "Spires of Ascension", short = "SOA", spellID = 354466, icon = "Interface\\Icons\\achievement_dungeon_spireofascension"},
+        {name = "Theater of Pain", short = "TOP", spellID = 354467, icon = "Interface\\Icons\\achievement_dungeon_theatreofpain"},
+        {name = "Tazavesh", short = "TAZ", spellID = 367416, icon = "Interface\\Icons\\achievement_dungeon_brokerdungeon"},
+    }},
+    -- Dragonflight
+    {category = "Dragonflight", dungeons = {
+        {name = "Algeth'ar Academy", short = "AA", spellID = 393273, icon = "Interface\\Icons\\achievement_dungeon_dragonacademy"},
+        {name = "Azure Vault", short = "AV", spellID = 393279, icon = "Interface\\Icons\\achievement_dungeon_arcanevaults"},
+        {name = "Brackenhide Hollow", short = "BH", spellID = 393267, icon = "Interface\\Icons\\achievement_dungeon_brackenhidehollow"},
+        {name = "Dawn of the Infinite", short = "DOTI", spellID = 424197, icon = "Interface\\Icons\\achievement_dungeon_dawnoftheinfinite"},
+        {name = "Halls of Infusion", short = "HOI", spellID = 393283, icon = "Interface\\Icons\\achievement_dungeon_hallsofinfusion"},
+        {name = "Neltharus", short = "NELTH", spellID = 393276, icon = "Interface\\Icons\\achievement_dungeon_neltharus"},
+        {name = "Nokhud Offensive", short = "NO", spellID = 393262, icon = "Interface\\Icons\\achievement_dungeon_centaurplains"},
+        {name = "Ruby Life Pools", short = "RLP", spellID = 393256, icon = "Interface\\Icons\\achievement_dungeon_lifepools"},
+        {name = "Uldaman", short = "ULD", spellID = 393222, icon = "Interface\\Icons\\achievement_dungeon_uldaman"},
+    }},
+    -- Legion
+    {category = "Legion", dungeons = {
+        {name = "Black Rook Hold", short = "BRH", spellID = 424153, icon = "Interface\\Icons\\achievement_dungeon_blackrookhold"},
+        {name = "Court of Stars", short = "COS", spellID = 393766, icon = "Interface\\Icons\\achievement_dungeon_courtofstars"},
+        {name = "Darkheart Thicket", short = "DHT", spellID = 424163, icon = "Interface\\Icons\\achievement_dungeon_darkheartthicket"},
+        {name = "Halls of Valor", short = "HOV", spellID = 393764, icon = "Interface\\Icons\\achievement_dungeon_hallsofvalor"},
+        {name = "Neltharion's Lair", short = "NL", spellID = 410078, icon = "Interface\\Icons\\achievement_dungeon_neltharionslair"},
+        {name = "Karazhan", short = "KARA", spellID = 373262, icon = "Interface\\Icons\\achievement_raid_karazhan"},
+        {name = "Seat of the Triumvirate", short = "SOTT", spellID = 1254551, icon = "Interface\\Icons\\achievement_dungeon_argusdungeon"},
+    }},
+    -- WoD
+    {category = "Warlords of Draenor", dungeons = {
+        {name = "Auchindoun", short = "AUCH", spellID = 159897, icon = "Interface\\Icons\\achievement_dungeon_auchindoun"},
+        {name = "Bloodmaul Slag Mines", short = "BSM", spellID = 159895, icon = "Interface\\Icons\\achievement_dungeon_ogreslagmines"},
+        {name = "Everbloom", short = "EB", spellID = 159901, icon = "Interface\\Icons\\achievement_dungeon_everbloom"},
+        {name = "Grimrail Depot", short = "GD", spellID = 159900, icon = "Interface\\Icons\\achievement_dungeon_blackrockdepot"},
+        {name = "Iron Docks", short = "ID", spellID = 159896, icon = "Interface\\Icons\\achievement_dungeon_blackrockdocks"},
+        {name = "Shadowmoon Burial Grounds", short = "SBG", spellID = 159899, icon = "Interface\\Icons\\achievement_dungeon_shadowmoonhideout"},
+        {name = "Skyreach", short = "SKY", spellID = 159898, icon = "Interface\\Icons\\achievement_dungeon_arakkoaspires"},
+        {name = "Upper Blackrock Spire", short = "UBRS", spellID = 159902, icon = "Interface\\Icons\\achievement_dungeon_upperblackrockspire"},
+    }},
+    -- MoP
+    {category = "Mists of Pandaria", dungeons = {
+        {name = "Gate of the Setting Sun", short = "GOSS", spellID = 131225, icon = "Interface\\Icons\\achievement_greatwall"},
+        {name = "Mogu'shan Palace", short = "MSP", spellID = 131222, icon = "Interface\\Icons\\achievement_dungeon_mogupalace"},
+        {name = "Scholomance", short = "SCHO", spellID = 131232, icon = "Interface\\Icons\\spell_holy_senseundead"},
+        {name = "Scarlet Halls", short = "SH", spellID = 131231, icon = "Interface\\Icons\\inv_helmet_52"},
+        {name = "Scarlet Monastery", short = "SM", spellID = 131229, icon = "Interface\\Icons\\spell_holy_resurrection"},
+        {name = "Siege of Niuzao Temple", short = "SNT", spellID = 131228, icon = "Interface\\Icons\\achievement_dungeon_siegeofniuzaotemple"},
+        {name = "Shado-Pan Monastery", short = "SPM", spellID = 131206, icon = "Interface\\Icons\\achievement_shadowpan_hideout"},
+        {name = "Stormstout Brewery", short = "SB", spellID = 131205, icon = "Interface\\Icons\\achievement_brewery"},
+        {name = "Temple of the Jade Serpent", short = "TJS", spellID = 131204, icon = "Interface\\Icons\\achievement_jadeserpent"},
+    }},
+    -- Cata
+    {category = "Cataclysm", dungeons = {
+        {name = "Grim Batol", short = "GB", spellID = 445424, icon = "Interface\\Icons\\achievement_dungeon_grimbatol"},
+        {name = "Throne of the Tides", short = "TOTT", spellID = 424142, icon = "Interface\\Icons\\achievement_dungeon_throne of the tides"},
+        {name = "Vortex Pinnacle", short = "VP", spellID = 410080, icon = "Interface\\Icons\\achievement_dungeon_skywall"},
+    }},
+    -- Wrath
+    {category = "Wrath of the Lich King", dungeons = {
+        {name = "Pit of Saron", short = "POS", spellID = 1254555, icon = "Interface\\Icons\\achievement_dungeon_icecrown_pitofsaron"},
+    }},
+    -- BfA
+    {category = "Battle for Azeroth", dungeons = {
+        {name = "Atal'Dazar", short = "AD", spellID = 424187, icon = "Interface\\Icons\\achievement_dungeon_ataldazar"},
+        {name = "Freehold", short = "FH", spellID = 410071, icon = "Interface\\Icons\\achievement_dungeon_freehold"},
+        {name = "Mechagon", short = "MECH", spellID = 373274, icon = "Interface\\Icons\\achievement_boss_mechagon"},
+        {name = "Underrot", short = "UR", spellID = 410074, icon = "Interface\\Icons\\achievement_dungeon_underrot"},
+        {name = "Waycrest Manor", short = "WM", spellID = 424167, icon = "Interface\\Icons\\achievement_dungeon_waycrestmannor"},
+    }},
+    -- Raids
+    {category = "TWW Raids", dungeons = {
+        {name = "Liberation of Undermine", short = "LOU", spellID = 1226482, icon = "Interface\\Icons\\inv_achievement_zone_undermine"},
+        {name = "Manaforge Omega", short = "MFO", spellID = 1239155, icon = "Interface\\Icons\\inv_112_achievement_raid_manaforgeomega"},
+    }},
+    {category = "DF Raids", dungeons = {
+        {name = "Vault of the Incarnates", short = "VOTI", spellID = 432254, icon = "Interface\\Icons\\achievement_raidprimalist_raid"},
+        {name = "Aberrus", short = "ABER", spellID = 432257, icon = "Interface\\Icons\\inv_achievement_raiddragon_raid"},
+        {name = "Amirdrassil", short = "AMIR", spellID = 432258, icon = "Interface\\Icons\\inv_achievement_raidemeralddream_raid"},
+    }},
+    {category = "SL Raids", dungeons = {
+        {name = "Castle Nathria", short = "CN", spellID = 373190, icon = "Interface\\Icons\\achievement_raid_revendrethraid_castlenathria"},
+        {name = "Sanctum of Domination", short = "SOD", spellID = 373191, icon = "Interface\\Icons\\achievement_raid_torghastraid"},
+        {name = "Sepulcher of the First Ones", short = "SEPUL", spellID = 373192, icon = "Interface\\Icons\\inv_achievement_raid_progenitorraid"},
+    }},
+}
 
 local function InitDB()
     if not KryosDungeonToolDB then
@@ -366,8 +495,10 @@ local function CreateMainFrame()
     f.currentTab = "group"
     f.groupElements = {}
     f.blacklistElements = {}
+    f.teleportElements = {}
     f.memberRows = {}
     f.blRows = {}
+    f.teleportButtons = {}
     
     -- Title Bar
     local titleBar = CreateFrame("Frame", nil, f)
@@ -389,7 +520,7 @@ local function CreateMainFrame()
     
     local ver = titleBar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     ver:SetPoint("LEFT", title, "RIGHT", 8, 0)
-    ver:SetText("v1.2")
+    ver:SetText("v1.3")
     ver:SetTextColor(0.5, 0.5, 0.5)
     
     -- Close Button
@@ -408,21 +539,22 @@ local function CreateMainFrame()
     -- Tab Buttons
     local function CreateTab(text, xPos)
         local tab = CreateFrame("Button", nil, f, "BackdropTemplate")
-        tab:SetSize(150, 28)
+        tab:SetSize(120, 28)
         tab:SetPoint("TOPLEFT", 10 + xPos, -45)
         tab:SetBackdrop({bgFile="Interface\\Buttons\\WHITE8X8", edgeFile="Interface\\Buttons\\WHITE8X8", edgeSize=1})
         tab.text = tab:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         tab.text:SetPoint("CENTER")
         tab.text:SetText(text)
         tab.indicator = tab:CreateTexture(nil, "OVERLAY")
-        tab.indicator:SetSize(150, 2)
+        tab.indicator:SetSize(120, 2)
         tab.indicator:SetPoint("BOTTOM")
         tab.indicator:SetColorTexture(0.8, 0.2, 0.2, 1)
         return tab
     end
     
     f.groupTab = CreateTab("GROUP CHECK", 0)
-    f.blacklistTab = CreateTab("BLACKLIST", 155)
+    f.teleportTab = CreateTab("M+ TELEPORTS", 125)
+    f.blacklistTab = CreateTab("BLACKLIST", 250)
     
     -- Content Area
     f.content = CreateFrame("Frame", nil, f)
@@ -659,6 +791,21 @@ local function CreateBlacklistElements(f)
     e.soundCheck:SetScript("OnClick", function(self) DB.settings.customSound = self:GetChecked() end)
 end
 
+-- ==================== TELEPORT ELEMENTS ====================
+local function CreateTeleportElements(f)
+    local e = f.teleportElements
+    local c = f.content
+    
+    -- Scroll Frame for all teleports
+    e.scroll = CreateFrame("ScrollFrame", "KryosDTTeleportScroll", c, "UIPanelScrollFrameTemplate")
+    e.scroll:SetPoint("TOPLEFT", c, "TOPLEFT", 10, -5)
+    e.scroll:SetPoint("BOTTOMRIGHT", c, "BOTTOMRIGHT", -28, 10)
+    
+    e.scrollChild = CreateFrame("Frame", nil, e.scroll)
+    e.scrollChild:SetSize(640, 1)
+    e.scroll:SetScrollChild(e.scrollChild)
+end
+
 -- ==================== SHOW/HIDE & REFRESH ====================
 local function SetupMainFrame(f)
     -- Show/Hide functions for elements
@@ -686,37 +833,67 @@ local function SetupMainFrame(f)
         end
     end
     
+    local function ShowTeleportElements()
+        for _, el in pairs(f.teleportElements) do
+            if el.Show then el:Show() end
+        end
+        for _, btn in ipairs(f.teleportButtons) do
+            if btn.Show then btn:Show() end
+        end
+    end
+    
+    local function HideTeleportElements()
+        for _, el in pairs(f.teleportElements) do
+            if el.Hide then el:Hide() end
+        end
+        for _, btn in ipairs(f.teleportButtons) do
+            if btn.Hide then btn:Hide() end
+        end
+    end
+    
+    -- Reset all tabs appearance
+    local function ResetTabs()
+        f.groupTab:SetBackdropColor(0.08, 0.08, 0.10, 1)
+        f.groupTab:SetBackdropBorderColor(0.2, 0.2, 0.25, 1)
+        f.groupTab.text:SetTextColor(0.5, 0.5, 0.5)
+        f.groupTab.indicator:Hide()
+        
+        f.teleportTab:SetBackdropColor(0.08, 0.08, 0.10, 1)
+        f.teleportTab:SetBackdropBorderColor(0.2, 0.2, 0.25, 1)
+        f.teleportTab.text:SetTextColor(0.5, 0.5, 0.5)
+        f.teleportTab.indicator:Hide()
+        
+        f.blacklistTab:SetBackdropColor(0.08, 0.08, 0.10, 1)
+        f.blacklistTab:SetBackdropBorderColor(0.2, 0.2, 0.25, 1)
+        f.blacklistTab.text:SetTextColor(0.5, 0.5, 0.5)
+        f.blacklistTab.indicator:Hide()
+    end
+    
+    local function ActivateTab(tab)
+        tab:SetBackdropColor(0.15, 0.15, 0.18, 1)
+        tab:SetBackdropBorderColor(0.8, 0.2, 0.2, 1)
+        tab.text:SetTextColor(1, 1, 1)
+        tab.indicator:Show()
+    end
+    
     -- Tab switching
     function f:SwitchTab(tab)
         self.currentTab = tab
+        ResetTabs()
+        HideGroupElements()
+        HideBlacklistElements()
+        HideTeleportElements()
         
-        -- Update tab appearance
         if tab == "group" then
-            self.groupTab:SetBackdropColor(0.15, 0.15, 0.18, 1)
-            self.groupTab:SetBackdropBorderColor(0.8, 0.2, 0.2, 1)
-            self.groupTab.text:SetTextColor(1, 1, 1)
-            self.groupTab.indicator:Show()
-            
-            self.blacklistTab:SetBackdropColor(0.08, 0.08, 0.10, 1)
-            self.blacklistTab:SetBackdropBorderColor(0.2, 0.2, 0.25, 1)
-            self.blacklistTab.text:SetTextColor(0.5, 0.5, 0.5)
-            self.blacklistTab.indicator:Hide()
-            
-            HideBlacklistElements()
+            ActivateTab(self.groupTab)
             ShowGroupElements()
             self:RefreshGroup()
+        elseif tab == "teleport" then
+            ActivateTab(self.teleportTab)
+            ShowTeleportElements()
+            self:RefreshTeleports()
         else
-            self.blacklistTab:SetBackdropColor(0.15, 0.15, 0.18, 1)
-            self.blacklistTab:SetBackdropBorderColor(0.8, 0.2, 0.2, 1)
-            self.blacklistTab.text:SetTextColor(1, 1, 1)
-            self.blacklistTab.indicator:Show()
-            
-            self.groupTab:SetBackdropColor(0.08, 0.08, 0.10, 1)
-            self.groupTab:SetBackdropBorderColor(0.2, 0.2, 0.25, 1)
-            self.groupTab.text:SetTextColor(0.5, 0.5, 0.5)
-            self.groupTab.indicator:Hide()
-            
-            HideGroupElements()
+            ActivateTab(self.blacklistTab)
             ShowBlacklistElements()
             self:RefreshBlacklist()
         end
@@ -880,8 +1057,153 @@ local function SetupMainFrame(f)
         e.scrollChild:SetHeight(math.max(1, math.abs(yOffset)))
     end
     
+    -- Refresh Teleports
+    function f:RefreshTeleports()
+        local e = self.teleportElements
+        
+        -- Clear existing buttons
+        for _, btn in ipairs(self.teleportButtons) do
+            btn:Hide()
+            btn:ClearAllPoints()
+        end
+        wipe(self.teleportButtons)
+        
+        local buttonSize = 40
+        local buttonSpacing = 6
+        local buttonsPerRow = 5
+        local columnWidth = 320
+        local rowHeight = buttonSize + 20
+        
+        -- Track positions for left and right columns
+        local leftY = 0
+        local rightY = 0
+        local currentColumn = 0  -- 0 = left, 1 = right
+        
+        for catIdx, category in ipairs(TELEPORT_DATA) do
+            -- Determine which column to use (alternate)
+            local xBase = currentColumn == 0 and 5 or columnWidth + 20
+            local yOffset = currentColumn == 0 and leftY or rightY
+            
+            -- Category Header
+            local header = e.scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            header:SetPoint("TOPLEFT", e.scrollChild, "TOPLEFT", xBase, yOffset - 5)
+            header:SetText("|cFFFFD100"..category.category.."|r")
+            
+            local headerFrame = CreateFrame("Frame", nil, e.scrollChild)
+            headerFrame.text = header
+            self.teleportButtons[#self.teleportButtons + 1] = headerFrame
+            
+            yOffset = yOffset - 22
+            
+            -- Dungeon Buttons
+            for i, dungeon in ipairs(category.dungeons) do
+                local col = (i - 1) % buttonsPerRow
+                local row = math.floor((i - 1) / buttonsPerRow)
+                
+                local xPos = xBase + col * (buttonSize + buttonSpacing)
+                local yPos = yOffset - row * rowHeight
+                
+                -- Button Frame (SecureActionButton for spell casting)
+                local btn = CreateFrame("Button", "KryosTeleport"..#self.teleportButtons, e.scrollChild, "SecureActionButtonTemplate, BackdropTemplate")
+                btn:SetSize(buttonSize, buttonSize)
+                btn:SetPoint("TOPLEFT", e.scrollChild, "TOPLEFT", xPos, yPos)
+                btn:SetBackdrop({bgFile="Interface\\Buttons\\WHITE8X8", edgeFile="Interface\\Buttons\\WHITE8X8", edgeSize=1})
+                btn:SetBackdropColor(0.1, 0.1, 0.12, 1)
+                btn:SetBackdropBorderColor(0.3, 0.3, 0.35, 1)
+                
+                -- IMPORTANT: Register for clicks to make button work
+                btn:RegisterForClicks("AnyUp", "AnyDown")
+                
+                -- Icon
+                local icon = btn:CreateTexture(nil, "ARTWORK")
+                icon:SetSize(buttonSize - 6, buttonSize - 6)
+                icon:SetPoint("CENTER")
+                icon:SetTexture(dungeon.icon)
+                icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+                btn.icon = icon
+                
+                -- Check if spell is known
+                local isKnown = IsSpellKnown(dungeon.spellID)
+                if not isKnown then
+                    icon:SetDesaturated(true)
+                    btn:SetBackdropBorderColor(0.15, 0.15, 0.15, 1)
+                end
+                
+                -- Hover overlay
+                local hover = btn:CreateTexture(nil, "HIGHLIGHT")
+                hover:SetAllPoints(icon)
+                hover:SetColorTexture(1, 1, 1, 0.2)
+                
+                -- Set spell attribute
+                btn:SetAttribute("type", "spell")
+                btn:SetAttribute("spell", dungeon.spellID)
+                
+                -- Name label below button
+                local nameLabel = e.scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                nameLabel:SetPoint("TOP", btn, "BOTTOM", 0, -1)
+                nameLabel:SetText(dungeon.short)
+                nameLabel:SetFont("Fonts\\FRIZQT__.TTF", 9, "OUTLINE")
+                if isKnown then
+                    nameLabel:SetTextColor(0.8, 0.8, 0.8)
+                else
+                    nameLabel:SetTextColor(0.4, 0.4, 0.4)
+                end
+                btn.label = nameLabel
+                
+                -- Tooltip
+                btn:SetScript("OnEnter", function(self)
+                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    if isKnown then
+                        GameTooltip:SetSpellByID(dungeon.spellID)
+                    else
+                        GameTooltip:SetText(dungeon.name)
+                        GameTooltip:AddLine("Not yet unlocked", 1, 0.3, 0.3)
+                        GameTooltip:AddLine("Complete the dungeon on M+ to unlock", 0.7, 0.7, 0.7)
+                    end
+                    GameTooltip:Show()
+                    self:SetBackdropBorderColor(0.8, 0.6, 0.2, 1)
+                end)
+                
+                btn:SetScript("OnLeave", function(self)
+                    GameTooltip:Hide()
+                    if isKnown then
+                        self:SetBackdropBorderColor(0.3, 0.3, 0.35, 1)
+                    else
+                        self:SetBackdropBorderColor(0.15, 0.15, 0.15, 1)
+                    end
+                end)
+                
+                btn.data = dungeon
+                self.teleportButtons[#self.teleportButtons + 1] = btn
+                
+                -- Track label too
+                local labelFrame = CreateFrame("Frame", nil, e.scrollChild)
+                labelFrame.text = nameLabel
+                self.teleportButtons[#self.teleportButtons + 1] = labelFrame
+            end
+            
+            -- Calculate rows for this category
+            local numRows = math.ceil(#category.dungeons / buttonsPerRow)
+            local categoryHeight = 22 + (numRows * rowHeight) + 10
+            
+            -- Update column position
+            if currentColumn == 0 then
+                leftY = leftY - categoryHeight
+            else
+                rightY = rightY - categoryHeight
+            end
+            
+            -- Alternate columns
+            currentColumn = 1 - currentColumn
+        end
+        
+        -- Set scroll height to the larger of the two columns
+        local totalHeight = math.max(math.abs(leftY), math.abs(rightY))
+        e.scrollChild:SetHeight(math.max(1, totalHeight + 20))
+    end
     -- Tab click handlers
     f.groupTab:SetScript("OnClick", function() f:SwitchTab("group") end)
+    f.teleportTab:SetScript("OnClick", function() f:SwitchTab("teleport") end)
     f.blacklistTab:SetScript("OnClick", function() f:SwitchTab("blacklist") end)
 end
 
@@ -942,11 +1264,12 @@ SlashCmdList["KDT"] = function(msg)
     local cmd = (msg or ""):lower():match("^(%S*)")
     if cmd == "" then MainFrame:Show(); MainFrame:SwitchTab("group")
     elseif cmd == "bl" or cmd == "blacklist" then MainFrame:Show(); MainFrame:SwitchTab("blacklist")
+    elseif cmd == "tp" or cmd == "teleport" then MainFrame:Show(); MainFrame:SwitchTab("teleport")
     elseif cmd == "cd" then StartCountdown()
     elseif cmd == "ready" then if IsInGroup() then DoReadyCheck() end
     elseif cmd == "post" then PostToChat()
     elseif cmd == "share" then ShareBlacklist()
-    else print("|cFFFF0000[Kryos]|r /kdt, /kdt bl, /kdt cd, /kdt ready, /kdt post, /kdt share") end
+    else print("|cFFFF0000[Kryos]|r /kdt, /kdt bl, /kdt tp, /kdt cd, /kdt ready, /kdt post, /kdt share") end
 end
 
 -- ==================== EVENTS ====================
@@ -961,11 +1284,15 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, _, arg4)
         
         MainFrame = CreateMainFrame()
         CreateGroupElements(MainFrame)
+        CreateTeleportElements(MainFrame)
         CreateBlacklistElements(MainFrame)
         SetupMainFrame(MainFrame)
         
-        -- Initially hide blacklist elements
+        -- Initially hide blacklist and teleport elements
         for _, el in pairs(MainFrame.blacklistElements) do
+            if el.Hide then el:Hide() end
+        end
+        for _, el in pairs(MainFrame.teleportElements) do
             if el.Hide then el:Hide() end
         end
         
@@ -1016,7 +1343,7 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, _, arg4)
             end)
         end)
         
-        print("|cFFFF0000[Kryos Dungeon Tool]|r v1.2 loaded. /kdt")
+        print("|cFFFF0000[Kryos Dungeon Tool]|r v1.3 loaded. /kdt")
         
     elseif event == "GROUP_ROSTER_UPDATE" then
         CheckBlacklistAlert()

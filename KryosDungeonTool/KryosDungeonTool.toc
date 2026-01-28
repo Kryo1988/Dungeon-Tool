@@ -2,7 +2,7 @@
 ## Title: |cFFFF0000Kryos|r Dungeon Tool
 ## Notes: Dungeon group management with keystones and blacklist
 ## Author: Kryos
-## Version: 1.2
+## Version: 1.3
 ## SavedVariables: KryosDungeonToolDB
 
 KryosDungeonTool.lua
