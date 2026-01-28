@@ -1,8 +1,13 @@
 # Kryos Dungeon Tool
+<img width="758" height="575" alt="Wow_ZJDN25IIeW" src="https://github.com/user-attachments/assets/a90f25af-100c-4da1-b580-c2754efae812" />
+<img width="767" height="573" alt="Wow_mlca6DcKhT" src="https://github.com/user-attachments/assets/d825a988-fd76-48b2-8aae-98a56fade603" />
+<img width="717" height="564" alt="Wow_QyhrfslOSr" src="https://github.com/user-attachments/assets/e3a0f782-0d6b-4f29-bcf9-59277d100cf2" />
 
-A World of Warcraft addon for Mythic+ dungeon groups that helps you manage your group composition, track important utilities, and maintain a blacklist of players.
+https://discord.gg/NfEzzudDJp
 
-![Version](https://img.shields.io/badge/version-1.2-blue)
+A World of Warcraft addon for Mythic+ dungeon groups that helps you manage your group composition, track important utilities, maintain a blacklist of players, and quickly teleport to dungeons.
+
+![Version](https://img.shields.io/badge/version-1.3-blue)
 ![WoW Version](https://img.shields.io/badge/WoW-The%20War%20Within-orange)
 
 ## Features
@@ -27,6 +32,22 @@ A World of Warcraft addon for Mythic+ dungeon groups that helps you manage your 
 - **Join Alerts**: Get notified (with optional custom sound) when a blacklisted player joins your group
 - **Right-Click Menu**: Quickly add/remove players via right-click context menu
 - **Share List**: Share your blacklist with group members who also have the addon
+
+### M+ Teleports (NEW in v1.3)
+- **Season 3 Dungeons**: Quick access to all current M+ dungeon teleports
+- **Visual Status**: See which teleports you have unlocked (colored) vs locked (grayed out)
+- **One-Click Teleport**: Click any unlocked dungeon to instantly teleport
+- **Tooltips**: Hover to see dungeon name and unlock status
+
+#### Current Season Dungeons:
+- Ara-Kara
+- Dawnbreaker
+- Eco-Dome
+- Halls of Attonement
+- Operation: Floodgate
+- Priory of the Sacred Flame
+- Tazavesh: So'leah's Gambit
+- Tazavesh: Streets of Wonder
 
 ## Installation
 
@@ -53,6 +74,7 @@ To use a custom alert sound for blacklisted players:
 |---------|-------------|
 | `/kdt` | Open Group Check panel |
 | `/kdt bl` | Open Blacklist panel |
+| `/kdt tp` | Open M+ Teleports panel |
 | `/kdt cd` | Start countdown |
 | `/kdt ready` | Initiate ready check |
 | `/kdt post` | Post group info to chat |
@@ -101,6 +123,12 @@ When Auto-Post announces a new player:
 | SOW | Siege of Boralus |
 
 ## Changelog
+
+### Version 1.3
+- **NEW: M+ Teleports Tab** - Quick access to all Season 3 dungeon teleports
+- Visual indication of unlocked vs locked teleports
+- One-click teleportation to any unlocked dungeon
+- Spell tooltips on hover
 
 ### Version 1.2
 - Fixed group member display issues
