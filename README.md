@@ -151,8 +151,8 @@ This addon is provided free of charge for personal use.
 
 ## Support
 
-If you encounter any issues or have suggestions, please open an issue on the repository.
+If you encounter any issues or have suggestions, please open an issue on the repository or join Discord https://discord.gg/NfEzzudDJp
 
 ---
 
-*Made for the WoW community by Kryos*
+*Made for the WoW community by Kryo*
