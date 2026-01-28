@@ -124,7 +124,7 @@ When Auto-Post announces a new player:
 
 ## Changelog
 
-### v1.4
+### Version 1.4
 - Refactored into modular file structure
 - Cleaner code organization
 - Easier maintenance and updates
