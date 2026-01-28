@@ -20,6 +20,9 @@ function KDT:CreateMainFrame()
     f:SetBackdropBorderColor(0.2, 0.2, 0.25, 1)
     f:Hide()
     
+    -- Register for ESC to close
+    tinsert(UISpecialFrames, "KryosDTMain")
+    
     f.currentTab = "group"
     f.groupElements = {}
     f.blacklistElements = {}

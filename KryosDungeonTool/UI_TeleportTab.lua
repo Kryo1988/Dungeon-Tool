@@ -104,6 +104,14 @@ function KDT:SetupTeleportRefresh(f)
                 btn:SetAttribute("type", "spell")
                 btn:SetAttribute("spell", dungeon.spellID)
                 
+                -- Announce teleport in group chat (only on mouse down)
+                btn:HookScript("OnMouseDown", function(self, button)
+                    if button == "LeftButton" and isKnown and IsInGroup() then
+                        local channel = IsInRaid() and "RAID" or IsInGroup(LE_PARTY_CATEGORY_INSTANCE) and "INSTANCE_CHAT" or "PARTY"
+                        SendChatMessage("[Kryos Dungeon Tool] Porting to " .. dungeon.name, channel)
+                    end
+                end)
+                
                 -- Name label below button (white, no shadow)
                 local nameLabel = e.scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
                 nameLabel:SetPoint("TOP", btn, "BOTTOM", 0, -1)
