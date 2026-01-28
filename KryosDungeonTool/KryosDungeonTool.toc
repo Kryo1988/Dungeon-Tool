@@ -1,8 +1,30 @@
 ## Interface: 120000
 ## Title: |cFFFF0000Kryos|r Dungeon Tool
-## Notes: Dungeon group management with keystones and blacklist
+## Notes: M+ Group Check, Blacklist & Teleports
 ## Author: Kryos
-## Version: 1.3
+## Version: 1.4
 ## SavedVariables: KryosDungeonToolDB
 
-KryosDungeonTool.lua
+# Core
+Core.lua
+
+# Data
+DungeonData.lua
+
+# Modules
+Blacklist.lua
+Group.lua
+
+# UI
+UI_MainFrame.lua
+UI_GroupTab.lua
+UI_BlacklistTab.lua
+UI_TeleportTab.lua
+Minimap.lua
+
+# Commands
+SlashCommands.lua
+
+# Events & Init (must be last)
+Events.lua
+Init.lua
