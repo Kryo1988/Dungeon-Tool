@@ -141,6 +141,10 @@ EventUtil.ContinueOnAddOnLoaded(addonName, function()
             else
                 wipe(KDT.knownGroupMembers)
                 wipe(KDT.groupKeys)
+                -- Reset blacklist alerts when leaving group
+                if KDT.alreadyAlerted then
+                    wipe(KDT.alreadyAlerted)
+                end
             end
             
             if KDT.MainFrame and KDT.MainFrame:IsShown() then

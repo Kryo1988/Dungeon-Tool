@@ -233,6 +233,156 @@ function KDT:AlertBlacklisted(name, reason)
     else
         PlaySound(SOUNDKIT.RAID_WARNING, "Master")
     end
+    
+    -- Show popup dialog
+    self:ShowBlacklistWarningDialog(name, reason)
+end
+
+-- Show warning dialog for blacklisted player
+function KDT:ShowBlacklistWarningDialog(playerName, reason)
+    local addon = self  -- Store reference to KDT
+    
+    -- Hide existing dialog if present
+    if addon.blacklistWarningDialog then
+        addon.blacklistWarningDialog:Hide()
+        addon.blacklistWarningDialog = nil
+    end
+    
+    local dialog = CreateFrame("Frame", "KryosBlacklistWarningDialog", UIParent, "BackdropTemplate")
+    dialog:SetSize(420, 220)
+    dialog:SetPoint("CENTER", 0, 100)
+    dialog:SetFrameStrata("FULLSCREEN_DIALOG")
+    dialog:SetFrameLevel(200)
+    dialog:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        edgeSize = 3
+    })
+    dialog:SetBackdropColor(0.15, 0.05, 0.05, 0.98)
+    dialog:SetBackdropBorderColor(1, 0.1, 0.1, 1)
+    dialog:SetMovable(true)
+    dialog:EnableMouse(true)
+    dialog:RegisterForDrag("LeftButton")
+    dialog:SetScript("OnDragStart", dialog.StartMoving)
+    dialog:SetScript("OnDragStop", dialog.StopMovingOrSizing)
+    
+    addon.blacklistWarningDialog = dialog
+    
+    -- Warning icon
+    local icon = dialog:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(48, 48)
+    icon:SetPoint("TOP", 0, -15)
+    icon:SetTexture("Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew")
+    
+    -- Title
+    local title = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    title:SetPoint("TOP", icon, "BOTTOM", 0, -5)
+    title:SetText("|cFFFF0000WARNING: BLACKLISTED PLAYER|r")
+    
+    -- Player name
+    local nameText = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    nameText:SetPoint("TOP", title, "BOTTOM", 0, -12)
+    nameText:SetText("|cFFFFFFFF" .. (playerName or "Unknown") .. "|r is on your blacklist!")
+    
+    -- Reason
+    local reasonText = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    reasonText:SetPoint("TOP", nameText, "BOTTOM", 0, -8)
+    if reason and reason ~= "" then
+        reasonText:SetText("Reason: |cFFFFCC00" .. reason .. "|r")
+    else
+        reasonText:SetText("|cFF888888No reason specified|r")
+    end
+    reasonText:SetWidth(380)
+    
+    -- Leave Group button (custom styled)
+    local leaveBtn = CreateFrame("Button", nil, dialog, "BackdropTemplate")
+    leaveBtn:SetSize(160, 35)
+    leaveBtn:SetPoint("BOTTOMLEFT", 35, 25)
+    leaveBtn:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        edgeSize = 1
+    })
+    leaveBtn:SetBackdropColor(0.6, 0.1, 0.1, 1)
+    leaveBtn:SetBackdropBorderColor(0.8, 0.2, 0.2, 1)
+    
+    local leaveBtnText = leaveBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    leaveBtnText:SetPoint("CENTER")
+    leaveBtnText:SetText("|cFFFFFFFFLeave Group|r")
+    
+    leaveBtn:SetScript("OnEnter", function(btn) 
+        btn:SetBackdropColor(0.8, 0.15, 0.15, 1) 
+    end)
+    leaveBtn:SetScript("OnLeave", function(btn) 
+        btn:SetBackdropColor(0.6, 0.1, 0.1, 1) 
+    end)
+    leaveBtn:SetScript("OnClick", function()
+        dialog:Hide()
+        addon.blacklistWarningDialog = nil
+        -- Leave the group (WoW 12.0 uses C_PartyInfo)
+        C_Timer.After(0.1, function()
+            if C_PartyInfo and C_PartyInfo.LeaveParty then
+                C_PartyInfo.LeaveParty()
+            elseif LeaveParty then
+                LeaveParty()
+            end
+        end)
+        addon:Print("Left the group due to blacklisted player: " .. (playerName or "Unknown"))
+    end)
+    
+    -- Stay button (custom styled)
+    local stayBtn = CreateFrame("Button", nil, dialog, "BackdropTemplate")
+    stayBtn:SetSize(160, 35)
+    stayBtn:SetPoint("BOTTOMRIGHT", -35, 25)
+    stayBtn:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        edgeSize = 1
+    })
+    stayBtn:SetBackdropColor(0.2, 0.4, 0.2, 1)
+    stayBtn:SetBackdropBorderColor(0.3, 0.6, 0.3, 1)
+    
+    local stayBtnText = stayBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    stayBtnText:SetPoint("CENTER")
+    stayBtnText:SetText("|cFFFFFFFFStay in Group|r")
+    
+    stayBtn:SetScript("OnEnter", function(btn) 
+        btn:SetBackdropColor(0.25, 0.5, 0.25, 1) 
+    end)
+    stayBtn:SetScript("OnLeave", function(btn) 
+        btn:SetBackdropColor(0.2, 0.4, 0.2, 1) 
+    end)
+    stayBtn:SetScript("OnClick", function()
+        dialog:Hide()
+        addon.blacklistWarningDialog = nil
+        addon:Print("Staying in group despite blacklisted player: " .. (playerName or "Unknown"))
+    end)
+    
+    -- Close button (X)
+    local closeBtn = CreateFrame("Button", nil, dialog)
+    closeBtn:SetSize(24, 24)
+    closeBtn:SetPoint("TOPRIGHT", -8, -8)
+    closeBtn:SetNormalTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Up")
+    closeBtn:SetHighlightTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Highlight")
+    closeBtn:SetScript("OnClick", function()
+        dialog:Hide()
+        addon.blacklistWarningDialog = nil
+    end)
+    
+    -- Make dialog close on escape
+    dialog:SetScript("OnKeyDown", function(dlg, key)
+        if key == "ESCAPE" then
+            dlg:SetPropagateKeyboardInput(false)
+            dlg:Hide()
+            addon.blacklistWarningDialog = nil
+        else
+            dlg:SetPropagateKeyboardInput(true)
+        end
+    end)
+    dialog:EnableKeyboard(true)
+    
+    dialog:Show()
+    dialog:Raise()
 end
 
 -- Share blacklist via addon messages (sync with other KDT users)

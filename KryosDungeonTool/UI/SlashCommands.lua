@@ -190,6 +190,11 @@ SlashCmdList["KDT"] = function(msg)
             KDT.MainFrame:SwitchTab("timer")
         end
         
+    elseif cmd == "testbl" then
+        -- Test blacklist warning dialog
+        KDT:Print("Testing blacklist warning dialog...")
+        KDT:ShowBlacklistWarningDialog("TestPlayer", "This is a test reason")
+        
     elseif cmd == "help" then
         KDT:Print("Commands:")
         KDT:Print("  /kdt - Open Group Check")
