@@ -1,5 +1,21 @@
 # KryosDungeonTool Changelog
 
+## Version 1.7.8 (2026-01-29)
+
+### Bug Fixes
+- **Fixed Tab Overlap on Group Change**: When someone joins/leaves the group, the Group Check tab no longer overlaps with the currently active tab. The group refresh now only updates when the Group Check tab is actually selected.
+- **Fixed Dynamic Row Hiding**: Member rows, blacklist rows, and BiS rows are now properly hidden when switching tabs.
+
+### Timer Visibility Fix
+- **Timer Always Shows in M+**: The timer overlay now always appears in M+ dungeons when "Enable M+ Timer Overlay" is checked, regardless of other settings.
+- **Renamed Checkbox**: "Show Timer When Not in M+" renamed to "Show Timer Outside M+ (for positioning)" to clarify its purpose - this option is only for positioning the timer when not in a dungeon.
+
+### Summary of Timer Logic:
+- `Enable M+ Timer Overlay` = Timer appears automatically when in M+
+- `Show Timer Outside M+ (for positioning)` = Timer also visible outside M+ so you can move/position it
+
+---
+
 ## Version 1.7.7 (2026-01-29)
 
 ### Bug Fixes

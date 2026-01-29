@@ -181,7 +181,7 @@ EventUtil.ContinueOnAddOnLoaded(addonName, function()
                 end
             end
             
-            if KDT.MainFrame and KDT.MainFrame:IsShown() then
+            if KDT.MainFrame and KDT.MainFrame:IsShown() and KDT.MainFrame.currentTab == "group" then
                 KDT.MainFrame:RefreshGroup()
             end
             

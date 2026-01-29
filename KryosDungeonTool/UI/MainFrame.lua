@@ -196,6 +196,17 @@ function KDT:CreateMainFrame()
         for _, el in pairs(self.bisElements) do if el.Hide then el:Hide() end end
         for _, btn in ipairs(self.teleportButtons) do if btn.Hide then btn:Hide() end end
         
+        -- Also hide dynamic rows (member rows, blacklist rows, bis rows)
+        if self.memberRows then
+            for _, row in ipairs(self.memberRows) do if row and row.Hide then row:Hide() end end
+        end
+        if self.blRows then
+            for _, row in ipairs(self.blRows) do if row and row.Hide then row:Hide() end end
+        end
+        if self.bisRows then
+            for _, row in ipairs(self.bisRows) do if row and row.Hide then row:Hide() end end
+        end
+        
         -- Show selected tab
         local function ActivateTab(tab)
             tab:SetBackdropColor(0.15, 0.15, 0.18, 1)

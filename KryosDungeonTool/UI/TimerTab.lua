@@ -81,11 +81,11 @@ function KDT:CreateTimerElements(f)
         KDT.DB.timer.locked = self:GetChecked()
     end)
     
-    -- Show When Inactive Checkbox
+    -- Show When Inactive Checkbox (for positioning outside M+)
     e.inactiveCB = CreateFrame("CheckButton", nil, e.settingsBox, "UICheckButtonTemplate")
     e.inactiveCB:SetSize(24, 24)
     e.inactiveCB:SetPoint("TOPLEFT", 15, -80)
-    e.inactiveCB.Text:SetText("Show Timer When Not in M+")
+    e.inactiveCB.Text:SetText("Show Timer Outside M+ (for positioning)")
     e.inactiveCB:SetScript("OnClick", function(self)
         KDT.DB.timer.showWhenInactive = self:GetChecked()
         KDT:UpdateExternalTimer()

@@ -283,17 +283,27 @@ function KDT:UpdateExternalTimer()
     local db = self.DB.timer
     local colors = db.colors or defaultColors
     
-    -- Show/Hide logic - keep showing until leaving instance
+    -- Check if we're actually in M+ (via API)
+    local inMythicPlus = C_ChallengeMode and C_ChallengeMode.IsChallengeModeActive and C_ChallengeMode.IsChallengeModeActive()
+    
+    -- Show/Hide logic:
+    -- 1. If enabled AND in M+ -> ALWAYS show
+    -- 2. If enabled AND showWhenInactive AND NOT in M+ -> show (for positioning/testing)
     local shouldShow = false
-    if state.active then
-        shouldShow = true
-    elseif state.completed and state.inInstance then
-        shouldShow = true -- Keep showing after completion until leaving
-    elseif db.enabled and db.showWhenInactive then
-        shouldShow = true
+    if db.enabled then
+        if inMythicPlus or state.active then
+            -- Always show in M+
+            shouldShow = true
+        elseif state.completed and state.inInstance then
+            -- Keep showing after completion until leaving instance
+            shouldShow = true
+        elseif db.showWhenInactive then
+            -- Show outside M+ for positioning/testing
+            shouldShow = true
+        end
     end
     
-    if not shouldShow or not db.enabled then
+    if not shouldShow then
         f:Hide()
         return
     end
