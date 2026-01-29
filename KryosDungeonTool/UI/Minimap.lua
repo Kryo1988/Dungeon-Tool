@@ -1,5 +1,5 @@
 -- Kryos Dungeon Tool
--- Minimap.lua - Minimap button
+-- UI/Minimap.lua - Minimap button (v1.4 Style)
 
 local addonName, KDT = ...
 
@@ -13,10 +13,12 @@ function KDT:CreateMinimapButton()
     btn:RegisterForDrag("LeftButton")
     btn:SetMovable(true)
     
+    -- Icon - Same as addon list icon (inv_relics_hourglass)
     local icon = btn:CreateTexture(nil, "BACKGROUND")
     icon:SetSize(20, 20)
     icon:SetPoint("CENTER", 0, 1)
-    icon:SetTexture("Interface\\Icons\\Spell_Shadow_SealOfKings")
+    icon:SetTexture("Interface\\Icons\\inv_relics_hourglass")
+    icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     
     local border = btn:CreateTexture(nil, "OVERLAY")
     border:SetSize(52, 52)
@@ -28,12 +30,15 @@ function KDT:CreateMinimapButton()
 end
 
 function KDT:UpdateMinimapPosition()
+    if not self.minimapButton then return end
     local angle = math.rad(self.DB and self.DB.minimapPos or 220)
+    self.minimapButton:ClearAllPoints()
     self.minimapButton:SetPoint("CENTER", Minimap, "CENTER", math.cos(angle) * 80, math.sin(angle) * 80)
 end
 
 function KDT:SetupMinimapButton()
     local btn = self.minimapButton
+    if not btn then return end
     
     btn:SetScript("OnDragStart", function(self)
         self:SetScript("OnUpdate", function()
@@ -64,8 +69,10 @@ function KDT:SetupMinimapButton()
     
     btn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:SetText("Kryos Dungeon Tool")
-        GameTooltip:AddLine("Left: Group | Right: Blacklist", 0.7, 0.7, 0.7)
+        GameTooltip:SetText("|cFFFF0000Kryos|r Dungeon Tool")
+        GameTooltip:AddLine("Left-Click: Open Group Check", 0.7, 0.7, 0.7)
+        GameTooltip:AddLine("Right-Click: Open Blacklist", 0.7, 0.7, 0.7)
+        GameTooltip:AddLine("Drag to move", 0.5, 0.5, 0.5)
         GameTooltip:Show()
     end)
     

@@ -1,5 +1,5 @@
 -- Kryos Dungeon Tool
--- UI_TeleportTab.lua - M+ Teleports tab UI
+-- UI/TeleportTab.lua - M+ Teleports tab UI (v1.4 Style)
 
 local addonName, KDT = ...
 
@@ -104,11 +104,24 @@ function KDT:SetupTeleportRefresh(f)
                 btn:SetAttribute("type", "spell")
                 btn:SetAttribute("spell", dungeon.spellID)
                 
-                -- Announce teleport in group chat (only on mouse down)
-                btn:HookScript("OnMouseDown", function(self, button)
-                    if button == "LeftButton" and isKnown and IsInGroup() then
-                        local channel = IsInRaid() and "RAID" or IsInGroup(LE_PARTY_CATEGORY_INSTANCE) and "INSTANCE_CHAT" or "PARTY"
-                        SendChatMessage("[Kryos Dungeon Tool] Porting to " .. dungeon.name, channel)
+                -- Track if message was already sent for this click
+                btn.messageSent = false
+                
+                -- PreClick: Send chat message (only once per click)
+                btn:SetScript("PreClick", function(self, button, down)
+                    if down and not self.messageSent and isKnown then
+                        self.messageSent = true
+                        local channel = IsInRaid() and "RAID" or (IsInGroup() and "PARTY" or nil)
+                        if channel then
+                            SendChatMessage("[Kryos Dungeon Tool] Porting to \"" .. dungeon.name .. "\"", channel)
+                        end
+                    end
+                end)
+                
+                -- PostClick: Reset message flag
+                btn:SetScript("PostClick", function(self, button, down)
+                    if not down then
+                        self.messageSent = false
                     end
                 end)
                 

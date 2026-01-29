@@ -1,5 +1,5 @@
 -- Kryos Dungeon Tool
--- UI_MainFrame.lua - Main window and tab system
+-- UI/MainFrame.lua - Main window and tab system (v1.4 Style)
 
 local addonName, KDT = ...
 
@@ -20,13 +20,14 @@ function KDT:CreateMainFrame()
     f:SetBackdropBorderColor(0.2, 0.2, 0.25, 1)
     f:Hide()
     
-    -- Register for ESC to close
+    -- Register with UISpecialFrames for ESC handling (standard WoW method)
     tinsert(UISpecialFrames, "KryosDTMain")
     
     f.currentTab = "group"
     f.groupElements = {}
     f.blacklistElements = {}
     f.teleportElements = {}
+    f.timerElements = {}
     f.memberRows = {}
     f.blRows = {}
     f.teleportButtons = {}
@@ -43,7 +44,7 @@ function KDT:CreateMainFrame()
     local icon = titleBar:CreateTexture(nil, "ARTWORK")
     icon:SetSize(24, 24)
     icon:SetPoint("LEFT", 12, 0)
-    icon:SetTexture("Interface\\Icons\\Spell_Shadow_SealOfKings")
+    icon:SetTexture("Interface\\Icons\\inv_relics_hourglass")
     
     local title = titleBar:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("LEFT", icon, "RIGHT", 10, 0)
@@ -67,10 +68,10 @@ function KDT:CreateMainFrame()
     closeBtn:SetScript("OnEnter", function() closeBtn.text:SetTextColor(1, 0.3, 0.3) end)
     closeBtn:SetScript("OnLeave", function() closeBtn.text:SetTextColor(0.6, 0.6, 0.6) end)
     
-    -- Tab Buttons
-    local function CreateTab(text, xPos)
+    -- Tab Buttons (4 tabs now)
+    local function CreateTab(text, xPos, width)
         local tab = CreateFrame("Button", nil, f, "BackdropTemplate")
-        tab:SetSize(120, 28)
+        tab:SetSize(width or 110, 28)
         tab:SetPoint("TOPLEFT", 10 + xPos, -45)
         tab:SetBackdrop({
             bgFile = "Interface\\Buttons\\WHITE8X8",
@@ -81,100 +82,97 @@ function KDT:CreateMainFrame()
         tab.text:SetPoint("CENTER")
         tab.text:SetText(text)
         tab.indicator = tab:CreateTexture(nil, "OVERLAY")
-        tab.indicator:SetSize(120, 2)
+        tab.indicator:SetSize(width or 110, 2)
         tab.indicator:SetPoint("BOTTOM")
         tab.indicator:SetColorTexture(0.8, 0.2, 0.2, 1)
         return tab
     end
     
-    f.groupTab = CreateTab("GROUP CHECK", 0)
-    f.teleportTab = CreateTab("M+ TELEPORTS", 125)
-    f.blacklistTab = CreateTab("BLACKLIST", 250)
+    f.groupTab = CreateTab("GROUP CHECK", 0, 110)
+    f.teleportTab = CreateTab("M+ TELEPORTS", 115, 110)
+    f.timerTab = CreateTab("M+ TIMER", 230, 100)
+    f.blacklistTab = CreateTab("BLACKLIST", 335, 100)
     
     -- Content Area
     f.content = CreateFrame("Frame", nil, f)
     f.content:SetPoint("TOPLEFT", 0, -78)
     f.content:SetPoint("BOTTOMRIGHT", 0, 0)
     
-    return f
-end
-
--- ==================== TAB SWITCHING ====================
-function KDT:SetupTabSwitching(f)
-    local function ShowElements(elements)
-        for _, el in pairs(elements) do
-            if el.Show then el:Show() end
-        end
-    end
-    
-    local function HideElements(elements)
-        for _, el in pairs(elements) do
-            if el.Hide then el:Hide() end
-        end
-    end
-    
-    local function HideTeleportButtons()
-        for _, btn in ipairs(f.teleportButtons) do
-            if btn.Hide then btn:Hide() end
-        end
-    end
-    
-    local function ShowTeleportButtons()
-        for _, btn in ipairs(f.teleportButtons) do
-            if btn.Show then btn:Show() end
-        end
-    end
-    
-    local function ResetTabs()
-        f.groupTab:SetBackdropColor(0.08, 0.08, 0.10, 1)
-        f.groupTab:SetBackdropBorderColor(0.2, 0.2, 0.25, 1)
-        f.groupTab.text:SetTextColor(0.5, 0.5, 0.5)
-        f.groupTab.indicator:Hide()
-        
-        f.teleportTab:SetBackdropColor(0.08, 0.08, 0.10, 1)
-        f.teleportTab:SetBackdropBorderColor(0.2, 0.2, 0.25, 1)
-        f.teleportTab.text:SetTextColor(0.5, 0.5, 0.5)
-        f.teleportTab.indicator:Hide()
-        
-        f.blacklistTab:SetBackdropColor(0.08, 0.08, 0.10, 1)
-        f.blacklistTab:SetBackdropBorderColor(0.2, 0.2, 0.25, 1)
-        f.blacklistTab.text:SetTextColor(0.5, 0.5, 0.5)
-        f.blacklistTab.indicator:Hide()
-    end
-    
-    local function ActivateTab(tab)
-        tab:SetBackdropColor(0.15, 0.15, 0.18, 1)
-        tab:SetBackdropBorderColor(0.8, 0.2, 0.2, 1)
-        tab.text:SetTextColor(1, 1, 1)
-        tab.indicator:Show()
-    end
-    
+    -- SwitchTab method (defined here so it's available immediately)
     function f:SwitchTab(tabName)
         self.currentTab = tabName
-        ResetTabs()
-        HideElements(self.groupElements)
-        HideElements(self.blacklistElements)
-        HideElements(self.teleportElements)
-        HideTeleportButtons()
+        
+        -- Reset all tabs
+        local tabs = {self.groupTab, self.teleportTab, self.timerTab, self.blacklistTab}
+        for _, tab in ipairs(tabs) do
+            tab:SetBackdropColor(0.08, 0.08, 0.10, 1)
+            tab:SetBackdropBorderColor(0.2, 0.2, 0.25, 1)
+            tab.text:SetTextColor(0.5, 0.5, 0.5)
+            tab.indicator:Hide()
+        end
+        
+        -- Hide all elements
+        for _, el in pairs(self.groupElements) do if el.Hide then el:Hide() end end
+        for _, el in pairs(self.blacklistElements) do if el.Hide then el:Hide() end end
+        for _, el in pairs(self.teleportElements) do if el.Hide then el:Hide() end end
+        for _, el in pairs(self.timerElements) do if el.Hide then el:Hide() end end
+        for _, btn in ipairs(self.teleportButtons) do if btn.Hide then btn:Hide() end end
+        
+        -- Show selected tab
+        local function ActivateTab(tab)
+            tab:SetBackdropColor(0.15, 0.15, 0.18, 1)
+            tab:SetBackdropBorderColor(0.8, 0.2, 0.2, 1)
+            tab.text:SetTextColor(1, 1, 1)
+            tab.indicator:Show()
+        end
         
         if tabName == "group" then
             ActivateTab(self.groupTab)
-            ShowElements(self.groupElements)
-            self:RefreshGroup()
+            for _, el in pairs(self.groupElements) do if el.Show then el:Show() end end
+            if self.RefreshGroup then self:RefreshGroup() end
         elseif tabName == "teleport" then
             ActivateTab(self.teleportTab)
-            ShowElements(self.teleportElements)
-            ShowTeleportButtons()
-            self:RefreshTeleports()
+            for _, el in pairs(self.teleportElements) do if el.Show then el:Show() end end
+            for _, btn in ipairs(self.teleportButtons) do if btn.Show then btn:Show() end end
+            if self.RefreshTeleports then self:RefreshTeleports() end
+        elseif tabName == "timer" then
+            ActivateTab(self.timerTab)
+            for _, el in pairs(self.timerElements) do if el.Show then el:Show() end end
+            if self.RefreshTimer then self:RefreshTimer() end
         else
             ActivateTab(self.blacklistTab)
-            ShowElements(self.blacklistElements)
-            self:RefreshBlacklist()
+            for _, el in pairs(self.blacklistElements) do if el.Show then el:Show() end end
+            if self.RefreshBlacklist then self:RefreshBlacklist() end
         end
     end
     
     -- Tab click handlers
     f.groupTab:SetScript("OnClick", function() f:SwitchTab("group") end)
     f.teleportTab:SetScript("OnClick", function() f:SwitchTab("teleport") end)
+    f.timerTab:SetScript("OnClick", function() f:SwitchTab("timer") end)
     f.blacklistTab:SetScript("OnClick", function() f:SwitchTab("blacklist") end)
+    
+    self.MainFrame = f
+    return f
+end
+
+-- ==================== TAB SWITCHING (kept for compatibility) ====================
+function KDT:SetupTabSwitching(f)
+    -- SwitchTab is now defined in CreateMainFrame, this is just a no-op for compatibility
+end
+
+-- Toggle main frame
+function KDT:ToggleMainFrame()
+    if not self.MainFrame then
+        self:CreateMainFrame()
+    end
+    
+    if self.MainFrame:IsShown() then
+        self.MainFrame:Hide()
+    else
+        self.MainFrame:Show()
+        if self.MainFrame.SwitchTab then
+            self.MainFrame:SwitchTab("group")
+        end
+    end
 end

@@ -1,5 +1,5 @@
 -- Kryos Dungeon Tool
--- UI_BlacklistTab.lua - Blacklist tab UI
+-- UI/BlacklistTab.lua - Blacklist tab UI (v1.4 Style with Edit Button)
 
 local addonName, KDT = ...
 
@@ -82,7 +82,7 @@ function KDT:CreateBlacklistElements(f)
     e.clearBtn:SetBackdropColor(0.5, 0.15, 0.15, 1)
     e.clearBtn:SetScript("OnClick", function()
         StaticPopupDialogs["KRYOS_CLEAR"] = {
-            text = "Clear blacklist?",
+            text = "Clear entire blacklist?",
             button1 = "Yes",
             button2 = "No",
             OnAccept = function()
@@ -143,17 +143,100 @@ function KDT:SetupBlacklistRefresh(f)
             row:SetBackdrop({bgFile = "Interface\\Buttons\\WHITE8X8"})
             row:SetBackdropColor(0.07, 0.07, 0.09, 0.95)
             
-            local name = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            name:SetPoint("TOPLEFT", 10, -8)
-            name:SetText("|cFFFF6666" .. entry.name .. "|r")
+            local nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            nameText:SetPoint("TOPLEFT", 10, -8)
+            nameText:SetText("|cFFFF6666" .. entry.name .. "|r")
             
             local reason = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
             reason:SetPoint("TOPLEFT", 10, -24)
-            reason:SetWidth(480)
+            reason:SetWidth(450)
             reason:SetJustifyH("LEFT")
             reason:SetText(entry.data.reason or "No reason")
             reason:SetTextColor(0.5, 0.5, 0.5)
             
+            local date = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            date:SetPoint("TOPRIGHT", -130, -8)
+            date:SetText(entry.data.date or "")
+            date:SetTextColor(0.4, 0.4, 0.4)
+            
+            -- Edit Button
+            local editBtn = KDT:CreateButton(row, "Edit", 50, 20)
+            editBtn:SetPoint("RIGHT", -70, 0)
+            editBtn:SetBackdropColor(0.3, 0.3, 0.5, 1)
+            local entryName = entry.name  -- Capture in local variable
+            local entryData = entry.data
+            editBtn:SetScript("OnClick", function()
+                -- Create custom edit dialog
+                if KDT.editDialog then
+                    KDT.editDialog:Hide()
+                end
+                
+                local dialog = CreateFrame("Frame", "KryosEditDialog", UIParent, "BackdropTemplate")
+                dialog:SetSize(350, 120)
+                dialog:SetPoint("CENTER")
+                dialog:SetFrameStrata("DIALOG")
+                dialog:SetBackdrop({
+                    bgFile = "Interface\\Buttons\\WHITE8X8",
+                    edgeFile = "Interface\\Buttons\\WHITE8X8",
+                    edgeSize = 2
+                })
+                dialog:SetBackdropColor(0.1, 0.1, 0.12, 0.98)
+                dialog:SetBackdropBorderColor(0.3, 0.3, 0.5, 1)
+                
+                local titleText = dialog:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                titleText:SetPoint("TOP", 0, -12)
+                titleText:SetText("Edit reason for |cFFFF6666" .. entryName .. "|r")
+                
+                local editBox = CreateFrame("EditBox", nil, dialog, "BackdropTemplate")
+                editBox:SetSize(310, 24)
+                editBox:SetPoint("TOP", 0, -40)
+                editBox:SetBackdrop({
+                    bgFile = "Interface\\Buttons\\WHITE8X8",
+                    edgeFile = "Interface\\Buttons\\WHITE8X8",
+                    edgeSize = 1
+                })
+                editBox:SetBackdropColor(0.05, 0.05, 0.07, 1)
+                editBox:SetBackdropBorderColor(0.3, 0.3, 0.35, 1)
+                editBox:SetFontObject("GameFontHighlight")
+                editBox:SetAutoFocus(true)
+                editBox:SetText(entryData.reason or "")
+                editBox:HighlightText()
+                editBox:SetTextInsets(8, 8, 0, 0)
+                
+                local saveBtn = KDT:CreateButton(dialog, "Save", 80, 24)
+                saveBtn:SetPoint("BOTTOMLEFT", 60, 15)
+                saveBtn:SetBackdropColor(0.15, 0.45, 0.15, 1)
+                saveBtn:SetScript("OnClick", function()
+                    local newReason = editBox:GetText()
+                    if KDT.DB.blacklist[entryName] then
+                        KDT.DB.blacklist[entryName].reason = newReason
+                    end
+                    dialog:Hide()
+                    f:RefreshBlacklist()
+                end)
+                
+                local cancelBtn = KDT:CreateButton(dialog, "Cancel", 80, 24)
+                cancelBtn:SetPoint("BOTTOMRIGHT", -60, 15)
+                cancelBtn:SetBackdropColor(0.5, 0.15, 0.15, 1)
+                cancelBtn:SetScript("OnClick", function()
+                    dialog:Hide()
+                end)
+                
+                editBox:SetScript("OnEnterPressed", function()
+                    saveBtn:Click()
+                end)
+                
+                editBox:SetScript("OnEscapePressed", function()
+                    dialog:Hide()
+                end)
+                
+                dialog:Show()
+                KDT.editDialog = dialog
+            end)
+            editBtn:SetScript("OnEnter", function(self) self:SetBackdropColor(0.4, 0.4, 0.6, 1) end)
+            editBtn:SetScript("OnLeave", function(self) self:SetBackdropColor(0.3, 0.3, 0.5, 1) end)
+            
+            -- Delete Button
             local delBtn = KDT:CreateButton(row, "Delete", 55, 20)
             delBtn:SetPoint("RIGHT", -8, 0)
             delBtn:SetBackdropColor(0.5, 0.15, 0.15, 1)
@@ -163,17 +246,6 @@ function KDT:SetupBlacklistRefresh(f)
             end)
             delBtn:SetScript("OnEnter", function(self) self:SetBackdropColor(0.6, 0.2, 0.2, 1) end)
             delBtn:SetScript("OnLeave", function(self) self:SetBackdropColor(0.5, 0.15, 0.15, 1) end)
-            
-            local editBtn = KDT:CreateButton(row, "Edit", 45, 20)
-            editBtn:SetPoint("RIGHT", delBtn, "LEFT", -5, 0)
-            editBtn:SetBackdropColor(0.3, 0.3, 0.5, 1)
-            editBtn.playerName = entry.name
-            editBtn:SetScript("OnClick", function(self)
-                local playerName = self.playerName
-                KDT:ShowEditReasonDialog(playerName, f)
-            end)
-            editBtn:SetScript("OnEnter", function(self) self:SetBackdropColor(0.4, 0.4, 0.6, 1) end)
-            editBtn:SetScript("OnLeave", function(self) self:SetBackdropColor(0.3, 0.3, 0.5, 1) end)
             
             self.blRows[#self.blRows + 1] = row
             yOffset = yOffset - 45

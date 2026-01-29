@@ -1,31 +1,31 @@
 ## Interface: 120000
 ## Title: |cFFFF0000Kryos|r Dungeon Tool
-## Notes: M+ Group Check, Blacklist & Teleports
+## Notes: M+ Group Check, Timer, Blacklist & Teleports
 ## Author: Kryos
-## Version: 1.4
+## Version: 1.5
 ## SavedVariables: KryosDungeonToolDB
-## IconTexture: Interface\Icons\Spell_Shadow_SealOfKings
+## IconTexture: Interface\Icons\inv_relics_hourglass
 
 # Core
-Core.lua
+Core\Core.lua
 
 # Data
-DungeonData.lua
+Data\DungeonData.lua
 
 # Modules
-Blacklist.lua
-Group.lua
+Modules\Blacklist.lua
+Modules\Group.lua
+Modules\Timer.lua
 
 # UI
-UI_MainFrame.lua
-UI_GroupTab.lua
-UI_BlacklistTab.lua
-UI_TeleportTab.lua
-Minimap.lua
+UI\MainFrame.lua
+UI\GroupTab.lua
+UI\BlacklistTab.lua
+UI\TeleportTab.lua
+UI\TimerTab.lua
+UI\Minimap.lua
+UI\SlashCommands.lua
 
-# Commands
-SlashCommands.lua
-
-# Events & Init (must be last)
-Events.lua
-Init.lua
+# Events (using EventUtil for WoW 12.0)
+Core\Events.lua
+Core\Init.lua

@@ -1,60 +1,105 @@
 -- Kryos Dungeon Tool
--- DungeonData.lua - Dungeon MapIDs and Teleport Data
+-- Data/DungeonData.lua - Dungeon and teleport data
 
 local addonName, KDT = ...
 
--- ==================== KEYSTONE MAP IDs ====================
--- Used to display keystone dungeon names
+-- ==================== DUNGEON NAMES (mapID -> name) ====================
 KDT.DUNGEON_NAMES = {
-    -- TWW Season 3 (from C_ChallengeMode.GetMapTable)
-    [499] = "PSF",    -- Priory of the Sacred Flame
-    [542] = "EDA",    -- Eco-Dome Al'dani
-    [378] = "HOA",    -- Halls of Atonement
-    [525] = "FLOOD",  -- Operation: Floodgate
-    [503] = "AK",     -- Ara-Kara, City of Echoes
-    [392] = "GMBT",   -- Tazavesh: So'leah's Gambit
-    [391] = "STRT",   -- Tazavesh: Streets of Wonder
-    [505] = "DB",     -- The Dawnbreaker
+    -- TWW Season 3
+    [503] = "Ara-Kara",
+    [505] = "Dawnbreaker",
+    [542] = "Eco-Dome",
+    [378] = "Halls of Atonement",
+    [525] = "Floodgate",
+    [499] = "Priory",
+    [392] = "Gambit",
+    [391] = "Streets",
     
     -- Alternative/Internal MapIDs (from actual keystones)
-    [2649] = "PSF",   -- Priory of the Sacred Flame (internal ID)
-    [2688] = "EDA",   -- Eco-Dome Al'dani (internal ID)
-    [2287] = "HOA",   -- Halls of Atonement (internal ID)
-    [2773] = "FLOOD", -- Operation: Floodgate (internal ID)
-    [2660] = "AK",    -- Ara-Kara, City of Echoes (internal ID)
-    [2662] = "DB",    -- The Dawnbreaker (internal ID)
+    [2649] = "Priory",
+    [2688] = "Eco-Dome",
+    [2287] = "Halls of Atonement",
+    [2773] = "Floodgate",
+    [2660] = "Ara-Kara",
+    [2662] = "Dawnbreaker",
+    [2441] = "Streets",  -- Tazavesh: Streets of Wonder
     
-    -- TWW other dungeons
-    [501] = "SV",     -- Stonevault
-    [502] = "COT",    -- City of Threads
-    [500] = "ROOK",   -- The Rookery
-    [504] = "BREW",   -- Cinderbrew Meadery
-    [506] = "DFC",    -- Darkflame Cleft
+    -- TWW other
+    [501] = "Stonevault",
+    [502] = "City of Threads",
+    [500] = "Rookery",
+    [504] = "Cinderbrew",
+    [506] = "Darkflame",
     
     -- Shadowlands
-    [375] = "NW",     -- Necrotic Wake
-    [379] = "PF",     -- Plaguefall
-    [380] = "SD",     -- Sanguine Depths
-    [381] = "SOA",    -- Spires of Ascension
-    [382] = "TOP",    -- Theater of Pain
-    [377] = "DOS",    -- De Other Side
-    [376] = "MISTS",  -- Mists of Tirna Scithe
+    [375] = "Mists",
+    [376] = "Necrotic Wake",
+    [377] = "De Other Side",
+    [379] = "Plaguefall",
+    [380] = "Sanguine Depths",
+    [381] = "Spires",
+    [382] = "Theater of Pain",
     
     -- Dragonflight
-    [399] = "RLP",    -- Ruby Life Pools
-    [400] = "NO",     -- The Nokhud Offensive
-    [401] = "AV",     -- The Azure Vault
-    [402] = "AA",     -- Algeth'ar Academy
-    [403] = "ULD",    -- Uldaman: Legacy of Tyr
-    [404] = "NELTH",  -- Neltharus
-    [405] = "BH",     -- Brackenhide Hollow
-    [406] = "HOI",    -- Halls of Infusion
-    [463] = "DOTI",   -- Dawn of the Infinite: Galakrond's Fall
-    [464] = "DOTI",   -- Dawn of the Infinite: Murozond's Rise
+    [399] = "Ruby Pools",
+    [400] = "Nokhud",
+    [401] = "Azure Vault",
+    [402] = "Academy",
+    [403] = "Uldaman",
+    [404] = "Neltharus",
+    [405] = "Brackenhide",
+    [406] = "Infusion",
+    [463] = "DOTI",
+    [464] = "DOTI",
+    
+    -- Midnight
+    [557] = "Windrunner",
+    [558] = "Magisters",
+    [559] = "Nexus-Point",
+    [560] = "Maisara",
+    [556] = "Pit of Saron",
 }
 
--- ==================== TELEPORT DATA ====================
--- Used for the M+ Teleports tab
+-- ==================== SHORT NAMES ====================
+KDT.DUNGEON_SHORT_NAMES = {
+    [503] = "AK",
+    [505] = "DAWN",
+    [542] = "EDA",
+    [378] = "HOA",
+    [525] = "FLOOD",
+    [499] = "PSF",
+    [392] = "GMBT",
+    [391] = "STRT",
+    [501] = "SV",
+    [502] = "COT",
+    [500] = "ROOK",
+    [504] = "BREW",
+    [506] = "DFC",
+    
+    -- Alternative/Internal MapIDs (from actual keystones)
+    [2649] = "PSF",
+    [2688] = "EDA",
+    [2287] = "HOA",
+    [2773] = "FLOOD",
+    [2660] = "AK",
+    [2662] = "DB",
+    [2441] = "STRT",  -- Tazavesh: Streets of Wonder
+}
+
+-- Get dungeon name by mapID
+function KDT:GetDungeonName(mapID)
+    if not mapID then return "Unknown" end
+    return self.DUNGEON_NAMES[mapID] or C_ChallengeMode.GetMapUIInfo(mapID) or "Unknown"
+end
+
+-- Get short dungeon name
+function KDT:GetShortDungeonName(mapID)
+    if not mapID then return "???" end
+    return self.DUNGEON_SHORT_NAMES[mapID] or self:Utf8Sub(self:GetDungeonName(mapID), 1, 14)
+end
+
+-- ==================== TELEPORT DATA FOR UI ====================
+-- Format: Categories with dungeons, each dungeon has spellID and icon
 KDT.TELEPORT_DATA = {
     -- TWW Season 3
     {
@@ -74,11 +119,11 @@ KDT.TELEPORT_DATA = {
     {
         category = "Midnight",
         dungeons = {
-            {name = "Dauntless Stronghold", short = "DON", spellID = 11, icon = "Interface\\Icons\\inv_achievement_dungeon_proveyourworth"},
+            {name = "Den of Nalorakk", short = "DON", spellID = 11, icon = "Interface\\Icons\\inv_achievement_dungeon_proveyourworth"},
             {name = "Magister's Terrace", short = "MT", spellID = 1254572, icon = "Interface\\Icons\\inv_achievement_dungeon_magistersterrace"},
             {name = "Mai'sara Caverns", short = "MC", spellID = 1254559, icon = "Interface\\Icons\\inv_achievement_dungeon_maisarahills"},
             {name = "Murder Row", short = "MR", spellID = 4, icon = "Interface\\Icons\\inv_achievement_dungeon_murderrow"},
-            {name = "Nexus Point Xenas", short = "NPX", spellID = 1254563, icon = "Interface\\Icons\\inv_achievement_dungeon_nexuspointxenas"},
+            {name = "Nexus-Point Xenas", short = "NPX", spellID = 1254563, icon = "Interface\\Icons\\inv_achievement_dungeon_nexuspointxenas"},
             {name = "Blinding Vale", short = "BV", spellID = 3, icon = "Interface\\Icons\\inv_achievement_dungeon_lightbloom"},
             {name = "Voidscar Arena", short = "VA", spellID = 1, icon = "Interface\\Icons\\inv_achievement_dungeon_voidscararena"},
             {name = "Windrunner Spire", short = "WS", spellID = 1254400, icon = "Interface\\Icons\\inv_achievement_dungeon_windrunnerspire"},
@@ -138,8 +183,8 @@ KDT.TELEPORT_DATA = {
             {name = "Court of Stars", short = "COS", spellID = 393766, icon = "Interface\\Icons\\achievement_dungeon_courtofstars"},
             {name = "Darkheart Thicket", short = "DHT", spellID = 424163, icon = "Interface\\Icons\\achievement_dungeon_darkheartthicket"},
             {name = "Halls of Valor", short = "HOV", spellID = 393764, icon = "Interface\\Icons\\achievement_dungeon_hallsofvalor"},
-            {name = "Neltharion's Lair", short = "NL", spellID = 410078, icon = "Interface\\Icons\\achievement_dungeon_neltharionslair"},
             {name = "Karazhan", short = "KARA", spellID = 373262, icon = "Interface\\Icons\\achievement_raid_karazhan"},
+            {name = "Neltharion's Lair", short = "NL", spellID = 410078, icon = "Interface\\Icons\\achievement_dungeon_neltharionslair"},
             {name = "Seat of the Triumvirate", short = "SOTT", spellID = 1254551, icon = "Interface\\Icons\\achievement_dungeon_argusdungeon"},
         }
     },
@@ -153,7 +198,7 @@ KDT.TELEPORT_DATA = {
             {name = "Grimrail Depot", short = "GD", spellID = 159900, icon = "Interface\\Icons\\achievement_dungeon_blackrockdepot"},
             {name = "Iron Docks", short = "ID", spellID = 159896, icon = "Interface\\Icons\\achievement_dungeon_blackrockdocks"},
             {name = "Shadowmoon Burial Grounds", short = "SBG", spellID = 159899, icon = "Interface\\Icons\\achievement_dungeon_shadowmoonhideout"},
-            {name = "Skyreach", short = "SKY", spellID = 159898, icon = "Interface\\Icons\\achievement_dungeon_arakkoaspires"},
+            {name = "Skyreach", short = "SR", spellID = 159898, icon = "Interface\\Icons\\achievement_dungeon_arakkoaspires"},
             {name = "Upper Blackrock Spire", short = "UBRS", spellID = 159902, icon = "Interface\\Icons\\achievement_dungeon_upperblackrockspire"},
         }
     },
@@ -199,7 +244,7 @@ KDT.TELEPORT_DATA = {
             {name = "Waycrest Manor", short = "WM", spellID = 424167, icon = "Interface\\Icons\\achievement_dungeon_waycrestmannor"},
         }
     },
-    -- Raids
+    -- Raids - TWW
     {
         category = "TWW Raids",
         dungeons = {
@@ -207,6 +252,7 @@ KDT.TELEPORT_DATA = {
             {name = "Manaforge Omega", short = "MFO", spellID = 1239155, icon = "Interface\\Icons\\inv_112_achievement_raid_manaforgeomega"},
         }
     },
+    -- Raids - DF
     {
         category = "DF Raids",
         dungeons = {
@@ -215,6 +261,7 @@ KDT.TELEPORT_DATA = {
             {name = "Amirdrassil", short = "AMIR", spellID = 432258, icon = "Interface\\Icons\\inv_achievement_raidemeralddream_raid"},
         }
     },
+    -- Raids - SL
     {
         category = "SL Raids",
         dungeons = {

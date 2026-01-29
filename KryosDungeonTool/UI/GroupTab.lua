@@ -1,5 +1,5 @@
 -- Kryos Dungeon Tool
--- UI_GroupTab.lua - Group Check tab UI
+-- UI/GroupTab.lua - Group Check tab UI (v1.4 Style)
 
 local addonName, KDT = ...
 
@@ -99,13 +99,11 @@ function KDT:CreateGroupElements(f)
     e.membersTitle:SetText("GROUP MEMBERS")
     e.membersTitle:SetTextColor(0.8, 0.8, 0.8)
     
-    e.scroll = CreateFrame("ScrollFrame", "KryosDTGroupScroll", c, "UIPanelScrollFrameTemplate")
-    e.scroll:SetPoint("TOPLEFT", e.membersTitle, "BOTTOMLEFT", 0, -5)
-    e.scroll:SetPoint("BOTTOMRIGHT", c, "BOTTOMRIGHT", -28, 45)
-    
-    e.scrollChild = CreateFrame("Frame", nil, e.scroll)
-    e.scrollChild:SetSize(640, 1)
-    e.scroll:SetScrollChild(e.scrollChild)
+    -- Create a simple container frame for member rows
+    e.memberContainer = CreateFrame("Frame", "KryosDTMemberContainer", c)
+    e.memberContainer:SetPoint("TOPLEFT", e.membersTitle, "BOTTOMLEFT", 0, -5)
+    e.memberContainer:SetPoint("BOTTOMRIGHT", c, "BOTTOMRIGHT", -10, 45)
+    e.memberContainer:Show()
     
     e.refreshBtn = self:CreateButton(c, "Refresh", 80, 22)
     e.refreshBtn:SetPoint("BOTTOMLEFT", 10, 12)
@@ -116,15 +114,70 @@ end
 function KDT:SetupGroupRefresh(f)
     function f:RefreshGroup()
         local e = self.groupElements
+        if not e then return end
         
-        -- Clear member rows
-        for _, row in ipairs(self.memberRows) do
-            row:Hide()
-            row:ClearAllPoints()
+        -- Clear existing member rows completely
+        if self.memberRows then
+            for _, row in ipairs(self.memberRows) do
+                if row then
+                    row:Hide()
+                    row:ClearAllPoints()
+                    row:SetParent(nil)
+                end
+            end
         end
-        wipe(self.memberRows)
+        self.memberRows = {}
         
-        -- Get data
+        -- Queue inspects for spec data (safely)
+        local units = KDT:GetGroupUnits()
+        for _, unit in ipairs(units) do
+            if UnitExists(unit) and not UnitIsUnit(unit, "player") then
+                if UnitIsConnected(unit) and CanInspect(unit) then
+                    pcall(function()
+                        NotifyInspect(unit)
+                    end)
+                end
+            end
+        end
+        
+        -- Broadcast own key (safely)
+        if KDT.BroadcastOwnKey then
+            pcall(function() KDT:BroadcastOwnKey() end)
+        end
+        
+        -- Get data and create rows
+        self:CreateMemberRows()
+        
+        -- Schedule a delayed refresh to get spec data (inspect takes time)
+        if not self.pendingSpecRefresh then
+            self.pendingSpecRefresh = true
+            C_Timer.After(1.5, function()
+                self.pendingSpecRefresh = false
+                if self:IsShown() and self.currentTab == "group" then
+                    -- Only refresh the rows, not the whole thing
+                    self:CreateMemberRows()
+                end
+            end)
+        end
+    end
+    
+    -- Separate function to create member rows
+    function f:CreateMemberRows()
+        local e = self.groupElements
+        if not e then return end
+        
+        -- Clear existing rows
+        if self.memberRows then
+            for _, row in ipairs(self.memberRows) do
+                if row then
+                    row:Hide()
+                    row:ClearAllPoints()
+                    row:SetParent(nil)
+                end
+            end
+        end
+        self.memberRows = {}
+        
         local members = KDT:GetGroupMembers()
         local info = KDT:AnalyzeGroup(members)
         
@@ -170,50 +223,59 @@ function KDT:SetupGroupRefresh(f)
         end
         e.keyText:SetText(#keys > 0 and "|cFFFFD100[Key]|r " .. table.concat(keys, ", ") or "|cFF666666No keys|r")
         
-        -- Create member rows
+        -- Debug: print member count
+        -- KDT:Print("RefreshGroup: Creating " .. #members .. " member rows")
+        
+        -- Create member rows directly in container
         local yOffset = 0
+        local containerWidth = e.memberContainer:GetWidth()
+        if not containerWidth or containerWidth < 100 then containerWidth = 640 end
+        
+        -- Make sure container is shown
+        e.memberContainer:Show()
+        
         for i, m in ipairs(members) do
-            local row = CreateFrame("Frame", "KryosMemberRow" .. i, e.scrollChild, "BackdropTemplate")
-            row:SetSize(640, 34)
-            row:SetPoint("TOPLEFT", e.scrollChild, "TOPLEFT", 0, yOffset)
+            local row = CreateFrame("Frame", nil, e.memberContainer, "BackdropTemplate")
+            row:SetSize(containerWidth, 34)
+            row:SetPoint("TOPLEFT", e.memberContainer, "TOPLEFT", 0, yOffset)
             row:SetBackdrop({bgFile = "Interface\\Buttons\\WHITE8X8"})
             row:SetBackdropColor(i % 2 == 0 and 0.07 or 0.05, i % 2 == 0 and 0.07 or 0.05, i % 2 == 0 and 0.09 or 0.07, 0.95)
-            row:Show()
+            row:SetFrameLevel(e.memberContainer:GetFrameLevel() + 1)
             
             local role = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             role:SetPoint("LEFT", 8, 0)
             role:SetText(KDT.ROLE_ICONS[m.role] or KDT.ROLE_ICONS.DAMAGER)
             
-            local name = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            name:SetPoint("LEFT", 32, 0)
-            name:SetText("|cFF" .. KDT:GetClassColorHex(m.class) .. (m.name or "?") .. "|r")
+            local nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            nameText:SetPoint("LEFT", 32, 0)
+            nameText:SetText("|cFF" .. KDT:GetClassColorHex(m.class) .. (m.name or "?") .. "|r")
             
-            local class = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            class:SetPoint("LEFT", 155, 0)
-            class:SetText(KDT.CLASS_NAMES[m.class] or "?")
-            class:SetTextColor(0.5, 0.5, 0.5)
+            local classText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            classText:SetPoint("LEFT", 155, 0)
+            classText:SetText(KDT.CLASS_NAMES[m.class] or "?")
+            classText:SetTextColor(0.5, 0.5, 0.5)
             
-            local spec = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            spec:SetPoint("LEFT", 265, 0)
-            spec:SetText(m.spec or "?")
-            spec:SetTextColor(0.4, 0.4, 0.4)
+            local specText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            specText:SetPoint("LEFT", 265, 0)
+            specText:SetText(m.spec or "?")
+            specText:SetTextColor(0.4, 0.4, 0.4)
             
-            local key = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            key:SetPoint("LEFT", 360, 0)
+            local keyText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            keyText:SetPoint("LEFT", 360, 0)
             if m.keystone then
                 local kc = m.keystone.level >= 12 and "|cFFFF8000" or
                           m.keystone.level >= 10 and "|cFFA335EE" or "|cFF0070DD"
-                key:SetText(kc .. "[Key] " .. m.keystone.text .. "|r")
+                keyText:SetText(kc .. "[Key] " .. m.keystone.text .. "|r")
             else
-                key:SetText("|cFF444444No Key|r")
+                keyText:SetText("|cFF444444No Key|r")
             end
             
-            local util = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            util:SetPoint("RIGHT", -8, 0)
+            local utilText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            utilText:SetPoint("RIGHT", -8, 0)
             local u = {}
             if KDT.BATTLE_REZ[m.class] then u[#u + 1] = "|cFF00DD00BR|r" end
             if KDT.BLOODLUST[m.class] then u[#u + 1] = "|cFFFF8800BL|r" end
-            util:SetText(table.concat(u, " "))
+            utilText:SetText(table.concat(u, " "))
             
             if KDT:IsBlacklisted(m.name) then
                 local warn = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -221,10 +283,9 @@ function KDT:SetupGroupRefresh(f)
                 warn:SetText("|cFFFF0000[!]|r")
             end
             
+            row:Show()
             self.memberRows[#self.memberRows + 1] = row
             yOffset = yOffset - 36
         end
-        
-        e.scrollChild:SetHeight(math.max(1, math.abs(yOffset)))
     end
 end
