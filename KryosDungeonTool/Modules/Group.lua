@@ -511,11 +511,11 @@ function KDT:PostToChat()
     -- Group composition line
     local header = "[KDT] Group: " .. info.tanks .. " Tank, " .. info.healers .. " Healer, " .. info.dps .. " DPS"
     if info.hasBR and info.hasBL then
-        header = header .. " | BR + BL"
+        header = header .. " - BR + BL"
     elseif info.hasBR then
-        header = header .. " | BR"
+        header = header .. " - BR"
     elseif info.hasBL then
-        header = header .. " | BL"
+        header = header .. " - BL"
     end
     table.insert(messages, header)
     
