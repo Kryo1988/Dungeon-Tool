@@ -169,6 +169,19 @@ SlashCmdList["KDT"] = function(msg)
                     KDT:FormatTime(run.time), KDT:FormatTime(run.timeLimit)))
             end
         end
+    
+    elseif cmd == "saverun" then
+        -- Manually save current run to history
+        local state = KDT.timerState
+        if state.dungeonName and state.dungeonName ~= "" and state.level > 0 then
+            state.completed = true
+            if state.completedTime == 0 then
+                state.completedTime = state.elapsed
+            end
+            KDT:SaveRunToHistory()
+        else
+            KDT:Print("No active M+ run to save.")
+        end
         
     elseif cmd == "timer" then
         -- Open Timer settings
@@ -184,6 +197,7 @@ SlashCmdList["KDT"] = function(msg)
         KDT:Print("  /kdt tp - Open Teleports")
         KDT:Print("  /kdt timer - Open Timer settings")
         KDT:Print("  /kdt history - Show run history")
+        KDT:Print("  /kdt saverun - Manually save current run")
         KDT:Print("  /kdt cd - Start countdown")
         KDT:Print("  /kdt ready - Ready check")
         KDT:Print("  /kdt post - Post group to chat")

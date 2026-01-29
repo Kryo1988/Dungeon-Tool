@@ -704,14 +704,42 @@ function KDT:UpdateTimerFromGame()
                 -- Update scenario info
                 self:UpdateScenarioInfo()
                 
-                -- Check for completion
-                local completionInfo = C_ChallengeMode.GetChallengeCompletionInfo()
-                if completionInfo and completionInfo.time and completionInfo.time > 0 and not state.completed then
-                    state.completed = true
-                    state.completedTime = completionInfo.time / 1000
-                    state.active = false
-                    -- Save to history
-                    self:SaveRunToHistory()
+                -- Check for completion via multiple methods
+                if not state.completed then
+                    local isComplete = false
+                    local completedTime = 0
+                    
+                    -- Method 1: C_ChallengeMode.GetChallengeCompletionInfo
+                    local completionInfo = C_ChallengeMode.GetChallengeCompletionInfo()
+                    if completionInfo and completionInfo.time and completionInfo.time > 0 then
+                        isComplete = true
+                        completedTime = completionInfo.time / 1000
+                    end
+                    
+                    -- Method 2: Check if all bosses are killed and forces at 100%
+                    if not isComplete and state.forcesPercent >= 100 then
+                        local allBossesKilled = true
+                        if state.bosses and #state.bosses > 0 then
+                            for _, boss in ipairs(state.bosses) do
+                                if not boss.killed then
+                                    allBossesKilled = false
+                                    break
+                                end
+                            end
+                            if allBossesKilled then
+                                isComplete = true
+                                completedTime = elapsedTime
+                            end
+                        end
+                    end
+                    
+                    if isComplete then
+                        state.completed = true
+                        state.completedTime = completedTime
+                        state.active = false
+                        -- Save to history
+                        self:SaveRunToHistory()
+                    end
                 end
             end
         end
@@ -872,8 +900,22 @@ end
 -- ==================== RUN HISTORY ====================
 function KDT:SaveRunToHistory()
     local state = self.timerState
-    if not state.completed or not state.dungeonName or state.dungeonName == "" then
+    
+    -- Debug
+    -- self:Print("SaveRunToHistory called: completed=" .. tostring(state.completed) .. " dungeon=" .. tostring(state.dungeonName))
+    
+    if not state.completed then
         return
+    end
+    
+    -- Use dungeon name or get it from mapID
+    local dungeonName = state.dungeonName
+    if (not dungeonName or dungeonName == "" or dungeonName == "Unknown") and state.mapID then
+        dungeonName = self:GetDungeonName(state.mapID) or self:GetShortDungeonName(state.mapID) or "Unknown Dungeon"
+    end
+    
+    if not dungeonName or dungeonName == "" then
+        dungeonName = "Unknown Dungeon"
     end
     
     -- Initialize history if needed
@@ -881,10 +923,17 @@ function KDT:SaveRunToHistory()
         self.DB.runHistory = {}
     end
     
+    -- Use completedTime or calculate from elapsed
+    local completedTime = state.completedTime
+    if completedTime == 0 or not completedTime then
+        completedTime = state.elapsed or 0
+    end
+    
     -- Calculate if in time
-    local inTime = state.completedTime <= state.timeLimit
-    local plus3 = state.completedTime <= state.timeLimit * 0.6
-    local plus2 = state.completedTime <= state.timeLimit * 0.8
+    local timeLimit = state.timeLimit or 0
+    local inTime = timeLimit > 0 and completedTime <= timeLimit
+    local plus3 = timeLimit > 0 and completedTime <= timeLimit * 0.6
+    local plus2 = timeLimit > 0 and completedTime <= timeLimit * 0.8
     
     local upgrade = 0
     if plus3 then
@@ -897,13 +946,13 @@ function KDT:SaveRunToHistory()
     
     -- Create run entry
     local runEntry = {
-        dungeon = state.dungeonName,
-        level = state.level,
-        time = state.completedTime,
-        timeLimit = state.timeLimit,
+        dungeon = dungeonName,
+        level = state.level or 0,
+        time = completedTime,
+        timeLimit = timeLimit,
         inTime = inTime,
         upgrade = upgrade,
-        deaths = state.deaths,
+        deaths = state.deaths or 0,
         date = date("%Y-%m-%d %H:%M"),
         timestamp = time(),
     }
@@ -916,7 +965,7 @@ function KDT:SaveRunToHistory()
         table.remove(self.DB.runHistory)
     end
     
-    self:Print("Run saved: +" .. state.level .. " " .. state.dungeonName .. " - " .. self:FormatTime(state.completedTime) .. (inTime and " (+" .. upgrade .. ")" or " (Depleted)"))
+    self:Print("Run saved: +" .. (state.level or 0) .. " " .. dungeonName .. " - " .. self:FormatTime(completedTime) .. (inTime and " (+" .. upgrade .. ")" or " (Depleted)"))
 end
 
 function KDT:GetRunHistory()

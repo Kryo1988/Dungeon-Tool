@@ -8,7 +8,6 @@ local addonName, KDT = ...
 local lastGroupSize = 0
 local lastInGroup = false
 local lastInInstance = false
-local lastDeathCount = 0
 local initialized = false
 
 -- ==================== INITIALIZATION ====================
@@ -86,18 +85,41 @@ EventUtil.ContinueOnAddOnLoaded(addonName, function()
     C_Timer.NewTicker(0.1, function()
         KDT:UpdateTimerFromGame()
         KDT:UpdateExternalTimer()
+    end)
+    
+    -- Death tracking ticker (0.5 sec) - checks who died
+    local knownDead = {}
+    C_Timer.NewTicker(0.5, function()
+        if not C_ChallengeMode or not C_ChallengeMode.IsChallengeModeActive or not C_ChallengeMode.IsChallengeModeActive() then
+            wipe(knownDead)
+            return
+        end
         
-        -- Check deaths via API (no combat log needed)
-        if C_ChallengeMode and C_ChallengeMode.IsChallengeModeActive and C_ChallengeMode.IsChallengeModeActive() then
-            local deaths = C_ChallengeMode.GetDeathCount()
-            if deaths and deaths > lastDeathCount then
-                -- Deaths increased - we can't get WHO died without combat log
-                -- but at least the count is accurate
-                lastDeathCount = deaths
-                KDT.timerState.deaths = deaths
+        -- Get official death count
+        local deaths = C_ChallengeMode.GetDeathCount()
+        if deaths then
+            KDT.timerState.deaths = deaths
+        end
+        
+        -- Check each group member for death status
+        local units = KDT:GetGroupUnits()
+        for _, unit in ipairs(units) do
+            if UnitExists(unit) then
+                local name = UnitName(unit)
+                local isDead = UnitIsDead(unit) or UnitIsGhost(unit)
+                
+                if name then
+                    if isDead and not knownDead[name] then
+                        -- Player just died!
+                        knownDead[name] = true
+                        local _, class = UnitClass(unit)
+                        KDT:RecordDeath(name, class)
+                    elseif not isDead and knownDead[name] then
+                        -- Player was resurrected
+                        knownDead[name] = nil
+                    end
+                end
             end
-        else
-            lastDeathCount = 0
         end
     end)
     

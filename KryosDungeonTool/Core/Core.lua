@@ -7,6 +7,7 @@ local addonName, KDT = ...
 local defaults = {
     minimapPos = 220,
     blacklist = {},
+    runHistory = {},
     settings = {
         autoPost = false,
         countdownSeconds = 10,
@@ -16,7 +17,7 @@ local defaults = {
         enabled = true,
         locked = false,
         showWhenInactive = false,
-        scale = 1,
+        scale = 1.2,
         spacing = 3,
         frameStrata = "HIGH",
         hideObjectiveTracker = false,
@@ -97,6 +98,12 @@ function KDT:InitDB()
         KryosDungeonToolDB = MergeDefaults(KryosDungeonToolDB, defaults)
     end
     self.DB = KryosDungeonToolDB
+    
+    -- Migration: Update default scale from 1 to 1.2 for existing users
+    if self.DB.timer and self.DB.timer.scale == 1 and not self.DB.migratedScale then
+        self.DB.timer.scale = 1.2
+        self.DB.migratedScale = true
+    end
 end
 
 -- Class colors
