@@ -68,6 +68,8 @@ function KDT:CreateTimerElements(f)
         elseif KDT.ExternalTimer then
             KDT.ExternalTimer:Hide()
         end
+        -- Hide/show default WoW timer based on setting
+        KDT:UpdateDefaultTimerVisibility()
     end)
     
     -- Lock Position Checkbox
@@ -134,11 +136,11 @@ function KDT:CreateTimerElements(f)
         end
     end)
     
-    -- Run History Box (replaces Current Run Status)
+    -- Run History Box (responsive - fills remaining space)
     e.historyBox = CreateFrame("Frame", nil, c, "BackdropTemplate")
     e.historyBox:SetPoint("TOPLEFT", e.settingsBox, "BOTTOMLEFT", 0, -10)
     e.historyBox:SetPoint("TOPRIGHT", e.settingsBox, "BOTTOMRIGHT", 0, -10)
-    e.historyBox:SetHeight(150)
+    e.historyBox:SetPoint("BOTTOM", c, "BOTTOM", 0, 10)
     e.historyBox:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8X8",
         edgeFile = "Interface\\Buttons\\WHITE8X8",
@@ -146,10 +148,11 @@ function KDT:CreateTimerElements(f)
     })
     e.historyBox:SetBackdropColor(0.08, 0.08, 0.10, 0.95)
     e.historyBox:SetBackdropBorderColor(0.2, 0.2, 0.25, 1)
+    e.historyBox:SetClipsChildren(true)
     
     e.historyTitle = e.historyBox:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     e.historyTitle:SetPoint("TOPLEFT", 10, -8)
-    e.historyTitle:SetText("RECENT RUNS (Last 10)")
+    e.historyTitle:SetText("RECENT RUNS (Last 30)")
     e.historyTitle:SetTextColor(0.8, 0.8, 0.8)
     
     -- Clear history button
@@ -160,24 +163,49 @@ function KDT:CreateTimerElements(f)
         f:RefreshTimer()
     end)
     
-    -- Scroll frame for history
-    e.historyScroll = CreateFrame("ScrollFrame", nil, e.historyBox, "UIPanelScrollFrameTemplate")
-    e.historyScroll:SetPoint("TOPLEFT", 5, -25)
-    e.historyScroll:SetPoint("BOTTOMRIGHT", -25, 5)
+    -- History content (NO SCROLLBAR - simple frame)
+    e.historyContent = CreateFrame("Frame", nil, e.historyBox)
+    e.historyContent:SetPoint("TOPLEFT", 5, -28)
+    e.historyContent:SetPoint("BOTTOMRIGHT", -5, 5)
     
-    e.historyContent = CreateFrame("Frame", nil, e.historyScroll)
-    e.historyContent:SetSize(e.historyBox:GetWidth() - 35, 160)
-    e.historyScroll:SetScrollChild(e.historyContent)
+    -- History entry frames (30 entries in 3 columns x 10 rows)
+    e.historyEntries = {}
+    local ROW_HEIGHT = 38
+    local COLS = 3
     
-    -- History entries (10 lines in scrollable area)
-    e.historyLines = {}
-    for i = 1, 10 do
-        local line = e.historyContent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        line:SetPoint("TOPLEFT", 5, -(i-1) * 15)
-        line:SetPoint("RIGHT", -5, 0)
-        line:SetJustifyH("LEFT")
-        line:SetText("")
-        e.historyLines[i] = line
+    for i = 1, 30 do
+        local col = ((i - 1) % COLS) -- 0, 1, 2
+        local row = math.floor((i - 1) / COLS) -- 0-9
+        
+        local entry = CreateFrame("Frame", nil, e.historyContent, "BackdropTemplate")
+        entry:SetHeight(ROW_HEIGHT - 2)
+        entry:SetBackdrop({bgFile = "Interface\\Buttons\\WHITE8X8"})
+        entry:SetBackdropColor(0.06, 0.06, 0.08, 0.9)
+        
+        -- Position will be set dynamically in RefreshTimer based on parent width
+        entry.col = col
+        entry.row = row
+        entry.rowHeight = ROW_HEIGHT
+        
+        -- Dungeon name + level
+        entry.dungeonText = entry:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        entry.dungeonText:SetPoint("TOPLEFT", 5, -3)
+        entry.dungeonText:SetPoint("RIGHT", -5, 0)
+        entry.dungeonText:SetJustifyH("LEFT")
+        
+        -- Time + result
+        entry.timeText = entry:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        entry.timeText:SetPoint("BOTTOMLEFT", 5, 3)
+        entry.timeText:SetJustifyH("LEFT")
+        
+        -- Date
+        entry.dateText = entry:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        entry.dateText:SetPoint("BOTTOMRIGHT", -5, 3)
+        entry.dateText:SetJustifyH("RIGHT")
+        entry.dateText:SetTextColor(0.5, 0.5, 0.5)
+        
+        entry:Hide()
+        e.historyEntries[i] = entry
     end
     
     -- No history text
@@ -198,50 +226,88 @@ function KDT:SetupTimerRefresh(f)
         e.scaleSlider:SetValue(KDT.DB.timer.scale or 1)
         e.scaleLabel:SetText("Timer Scale: " .. string.format("%.1f", KDT.DB.timer.scale or 1))
         
-        -- Update run history
+        -- Update run history (3-column grid)
         local history = KDT:GetRunHistory()
+        
+        -- Calculate column width based on content frame width
+        local contentWidth = e.historyContent:GetWidth()
+        if contentWidth < 100 then contentWidth = e.historyBox:GetWidth() - 10 end
+        local colWidth = math.floor(contentWidth / 3) - 4
+        local ROW_HEIGHT = 38
+        local COLS = 3
         
         if #history == 0 then
             e.noHistoryText:Show()
-            for _, line in ipairs(e.historyLines) do
-                line:SetText("")
+            for _, entry in ipairs(e.historyEntries) do
+                entry:Hide()
             end
         else
             e.noHistoryText:Hide()
-            for i, line in ipairs(e.historyLines) do
+            
+            for i, entry in ipairs(e.historyEntries) do
                 local run = history[i]
-                if run then
-                    local statusColor, statusText
+                if run and i <= 30 then
+                    -- Calculate position
+                    local col = ((i - 1) % COLS)
+                    local row = math.floor((i - 1) / COLS)
+                    
+                    entry:ClearAllPoints()
+                    entry:SetPoint("TOPLEFT", e.historyContent, "TOPLEFT", col * (colWidth + 4), -row * ROW_HEIGHT)
+                    entry:SetWidth(colWidth)
+                    
+                    -- Status color and text
+                    local statusColor, statusIcon
                     if run.upgrade == 3 then
-                        statusColor = "|cFF00FF00"
-                        statusText = "+3"
+                        statusColor = "00FF00"
+                        statusIcon = "+++"
                     elseif run.upgrade == 2 then
-                        statusColor = "|cFF00FF00"
-                        statusText = "+2"
+                        statusColor = "7FFF00"
+                        statusIcon = "++"
                     elseif run.upgrade == 1 then
-                        statusColor = "|cFFFFFF00"
-                        statusText = "+1"
+                        statusColor = "FFFF00"
+                        statusIcon = "+"
                     else
-                        statusColor = "|cFFFF0000"
-                        statusText = "Depleted"
+                        statusColor = "FF4444"
+                        statusIcon = "X"
                     end
                     
-                    local timeStr = KDT:FormatTime(run.time)
-                    local limitStr = KDT:FormatTime(run.timeLimit)
-                    local deathStr = run.deaths > 0 and (" |cFFFF6666(" .. run.deaths .. " deaths)|r") or ""
+                    -- Format dungeon name (truncate if too long)
+                    local dungeonName = run.dungeon or "Unknown"
+                    if #dungeonName > 12 then
+                        dungeonName = string.sub(dungeonName, 1, 11) .. "."
+                    end
                     
-                    line:SetText(string.format(
-                        "%s[%s]|r |cFFFFD100+%d|r %s - %s/%s%s",
+                    -- Dungeon + level line
+                    entry.dungeonText:SetText(string.format(
+                        "|cFF%s[%s]|r |cFFFFD100+%d|r %s",
                         statusColor,
-                        statusText,
+                        statusIcon,
                         run.level or 0,
-                        run.dungeon or "Unknown",
-                        timeStr,
-                        limitStr,
-                        deathStr
+                        dungeonName
                     ))
+                    
+                    -- Time line
+                    local timeStr = KDT:FormatTime(run.time)
+                    local deathStr = run.deaths > 0 and string.format(" |cFFFF6666[%dD]|r", run.deaths) or ""
+                    entry.timeText:SetText(string.format("|cFFAAAAAA%s|r%s", timeStr, deathStr))
+                    
+                    -- Date (short format)
+                    local dateStr = run.date or ""
+                    if #dateStr > 10 then
+                        dateStr = string.sub(dateStr, 6, 10) -- MM-DD
+                    end
+                    entry.dateText:SetText(dateStr)
+                    
+                    -- Background color based on result
+                    if run.upgrade >= 1 then
+                        entry:SetBackdropColor(0.02, 0.08, 0.02, 0.9)
+                    else
+                        entry:SetBackdropColor(0.08, 0.02, 0.02, 0.9)
+                    end
+                    
+                    entry:Show()
                 else
-                    line:SetText("")
+                    entry:Hide()
                 end
             end
         end

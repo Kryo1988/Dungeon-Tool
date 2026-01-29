@@ -1,5 +1,83 @@
 # KryosDungeonTool Changelog
 
+## Version 1.7.7 (2026-01-29)
+
+### Bug Fixes
+- **Scrollbar Removed**: Recent Runs list no longer has a scrollbar - uses simple frame with clipping
+- **Improved Completion Detection**: 
+  - Added SCENARIO_COMPLETED event as backup trigger
+  - Better API handling for C_ChallengeMode.GetCompletionInfo() and GetChallengeCompletionInfo()
+  - Debug messages now show when completion is detected (yellow text)
+  - Auto-refresh Timer tab when completion is saved
+
+### New Debug Commands
+- `/kdt debugtimer` - Shows complete timer state (active, completed, elapsed time, bosses, forces, etc.)
+- `/kdt testrun` - Adds a random test run to history (for testing UI)
+- `/kdt clearruns` - Clears all run history
+
+### Technical Notes
+If runs are still not being saved after dungeon completion:
+1. Use `/kdt debugtimer` at the end of a run to see the timer state
+2. Check if you see the yellow "[Debug] CHALLENGE_MODE_COMPLETED event fired!" message
+3. If no event fires, the polling fallback should still detect completion
+
+---
+
+## Version 1.7.6 (2026-01-29)
+
+### Bug Fixes - Spec Detection
+- **Added INSPECT_READY Event Handler**: Now properly captures spec data when the server responds to inspect requests
+- **Improved Spec Cache**: Spec data is now reliably cached and retrieved for all party members
+- **Periodic Spec Refresh**: Added a 3-second ticker that automatically tries to get specs for any party members with unknown specs
+- **Removed UnitIsVisible Requirement**: Spec detection no longer requires players to be visible (in range), works for all connected party members
+- **Auto UI Refresh**: Group tab automatically refreshes when new spec data is retrieved
+
+### Technical Changes
+- Created dedicated event frame for INSPECT_READY event
+- Spec cache now includes timestamp for cache expiry (5 minute max)
+- QueueInspect simplified - main handling done via INSPECT_READY event
+
+---
+
+## Version 1.7.5 (2026-01-29)
+
+### Bug Fixes
+- **Fixed WASD Movement**: Keyboard input no longer blocked when addon window is open. ESC handler now only captures the ESC key without affecting movement.
+
+### UI Improvements - Recent Runs
+- **Expanded to 30 Runs**: Now stores and displays up to 30 recent dungeon runs
+- **3-Column Grid Layout**: Runs displayed in 3 columns side by side instead of a single vertical list
+- **Compact Entry Display**: Each entry shows:
+  - Status icon (+++ / ++ / + / X) with color coding
+  - Dungeon level and name
+  - Completion time and death count
+  - Date (MM-DD format)
+- **Color-Coded Backgrounds**: Green tint for timed runs, red tint for depleted
+
+---
+
+## Version 1.7.4 (2026-01-29)
+
+### Bug Fixes (WoW 12.0 Compatibility)
+- **Fixed ADDON_ACTION_BLOCKED Error**: Replaced UISpecialFrames registration with custom ESC handler to avoid protected function errors when other UI panels are opened
+- **Fixed UnitIsPlayer Error**: Wrapped tooltip hook in pcall for WoW 12.0 security context compatibility
+- **Fixed M+ Completion Detection**: Improved completion detection with multiple methods:
+  - Forces threshold lowered to 99.4% (handles rounding)
+  - Added C_Scenario.IsComplete() as fallback
+  - Completion now prints success message to chat
+- **Fixed Spec Detection**: Improved inspect system with retry logic (up to 3 retries) for more reliable spec detection including Protection Paladin
+
+### UI Improvements
+- **Removed Scrollbar from Recent Runs**: History box now responsive to window size instead of using scrollbar
+- **Default WoW Timer Hidden**: When "Enable M+ Timer Overlay" is checked, the default WoW M+ timer is now hidden (ScenarioBlocksFrame/ObjectiveTracker)
+
+### Technical Changes
+- ESC key handler moved from UISpecialFrames to direct OnKeyDown script
+- Added UpdateDefaultTimerVisibility() function with multiple fallback methods for different WoW versions
+- Inspect system now caches results and auto-refreshes group UI when spec data is retrieved
+
+---
+
 ## Version 1.7.3 (2026-01-29)
 
 ### Responsive Layout Fix

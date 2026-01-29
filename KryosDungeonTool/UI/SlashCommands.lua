@@ -89,6 +89,69 @@ SlashCmdList["KDT"] = function(msg)
             KDT:Print("  " .. (m.name or "?") .. " (" .. (m.class or "?") .. ")")
         end
         
+    elseif cmd == "debugtimer" then
+        -- Debug timer state
+        KDT:Print("=== Timer Debug ===")
+        local state = KDT.timerState
+        KDT:Print("active: " .. tostring(state.active))
+        KDT:Print("completed: " .. tostring(state.completed))
+        KDT:Print("elapsed: " .. tostring(state.elapsed))
+        KDT:Print("completedTime: " .. tostring(state.completedTime))
+        KDT:Print("timeLimit: " .. tostring(state.timeLimit))
+        KDT:Print("dungeonName: " .. tostring(state.dungeonName))
+        KDT:Print("level: " .. tostring(state.level))
+        KDT:Print("mapID: " .. tostring(state.mapID))
+        KDT:Print("forcesPercent: " .. tostring(state.forcesPercent))
+        KDT:Print("deaths: " .. tostring(state.deaths))
+        KDT:Print("bosses: " .. tostring(state.bosses and #state.bosses or 0))
+        if state.bosses then
+            for i, boss in ipairs(state.bosses) do
+                KDT:Print("  Boss " .. i .. ": " .. (boss.name or "?") .. " killed=" .. tostring(boss.killed))
+            end
+        end
+        -- Check API
+        KDT:Print("--- API Check ---")
+        KDT:Print("IsChallengeModeActive: " .. tostring(C_ChallengeMode.IsChallengeModeActive and C_ChallengeMode.IsChallengeModeActive()))
+        local activeInfo = C_ChallengeMode.GetActiveChallengeMapID and C_ChallengeMode.GetActiveChallengeMapID()
+        KDT:Print("GetActiveChallengeMapID: " .. tostring(activeInfo))
+        local compInfo = C_ChallengeMode.GetCompletionInfo and C_ChallengeMode.GetCompletionInfo()
+        if compInfo then
+            KDT:Print("GetCompletionInfo: mapID=" .. tostring(compInfo))
+        end
+        
+    elseif cmd == "testrun" then
+        -- Add a test run to history
+        if not KDT.DB.runHistory then
+            KDT.DB.runHistory = {}
+        end
+        local testRun = {
+            dungeon = "Test Dungeon",
+            level = 15,
+            time = 1800 + math.random(0, 600), -- 30-40 min
+            timeLimit = 2100, -- 35 min
+            inTime = true,
+            upgrade = math.random(1, 3),
+            deaths = math.random(0, 5),
+            date = date("%Y-%m-%d %H:%M"),
+            timestamp = time(),
+        }
+        table.insert(KDT.DB.runHistory, 1, testRun)
+        while #KDT.DB.runHistory > 30 do
+            table.remove(KDT.DB.runHistory)
+        end
+        KDT:Print("Test run added! Total runs: " .. #KDT.DB.runHistory)
+        if KDT.MainFrame and KDT.MainFrame:IsShown() then
+            KDT.MainFrame:RefreshTimer()
+        end
+        
+    elseif cmd == "clearruns" then
+        -- Clear run history
+        KDT.DB.runHistory = {}
+        KDT:Print("Run history cleared.")
+        if KDT.MainFrame and KDT.MainFrame:IsShown() then
+            KDT.MainFrame:RefreshTimer()
+        end
+        
     elseif cmd == "debugui" then
         -- Debug UI elements
         KDT:Print("=== UI Debug ===")

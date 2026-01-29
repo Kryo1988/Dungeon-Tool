@@ -85,11 +85,40 @@ EventUtil.ContinueOnAddOnLoaded(addonName, function()
         KDT:CreateExternalTimer()
     end
     
+    -- Update default timer visibility based on settings
+    C_Timer.After(1, function()
+        KDT:UpdateDefaultTimerVisibility()
+    end)
+    
     -- ==================== POLLING SYSTEM ====================
     -- Fast ticker for timer updates (0.1 sec)
     C_Timer.NewTicker(0.1, function()
         KDT:UpdateTimerFromGame()
         KDT:UpdateExternalTimer()
+    end)
+    
+    -- Slower ticker to update default timer visibility (5 sec)
+    C_Timer.NewTicker(5, function()
+        KDT:UpdateDefaultTimerVisibility()
+    end)
+    
+    -- Spec refresh ticker (3 sec) - tries to get specs for unknown group members
+    C_Timer.NewTicker(3, function()
+        if not IsInGroup() then return end
+        
+        local units = KDT:GetGroupUnits()
+        for _, unit in ipairs(units) do
+            if UnitExists(unit) and not UnitIsUnit(unit, "player") then
+                local guid = UnitGUID(unit)
+                -- Check if we don't have spec data for this player
+                if guid and (not KDT.specCache or not KDT.specCache[guid] or not KDT.specCache[guid].specName) then
+                    -- Try to inspect if possible
+                    if UnitIsConnected(unit) and CanInspect(unit) then
+                        NotifyInspect(unit)
+                    end
+                end
+            end
+        end
     end)
     
     -- Death tracking ticker (0.5 sec) - checks who died
@@ -262,22 +291,31 @@ function KDT:SetupTooltipHook()
     if not TooltipDataProcessor then return end
     
     TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Unit, function(tooltip, data)
-        if not self.DB or not self.DB.blacklist then return end
-        
-        local _, unit = tooltip:GetUnit()
-        if not unit or not UnitIsPlayer(unit) then return end
-        
-        local name = UnitName(unit)
-        if not name then return end
-        
-        for _, entry in ipairs(self.DB.blacklist) do
-            if entry.name == name then
-                tooltip:AddLine(" ")
-                tooltip:AddLine("|cFFFF0000[BLACKLISTED]|r " .. (entry.reason or "No reason"), 1, 0, 0)
-                tooltip:Show()
-                break
+        -- Wrap in pcall for WoW 12.0 compatibility (tainted execution context)
+        pcall(function()
+            if not self.DB or not self.DB.blacklist then return end
+            
+            local _, unit = tooltip:GetUnit()
+            if not unit then return end
+            
+            -- Use pcall for UnitIsPlayer due to WoW 12.0 security changes
+            local isPlayer = false
+            local success, result = pcall(UnitIsPlayer, unit)
+            if success then isPlayer = result end
+            if not isPlayer then return end
+            
+            local name = UnitName(unit)
+            if not name then return end
+            
+            for _, entry in ipairs(self.DB.blacklist) do
+                if entry.name == name then
+                    tooltip:AddLine(" ")
+                    tooltip:AddLine("|cFFFF0000[BLACKLISTED]|r " .. (entry.reason or "No reason"), 1, 0, 0)
+                    tooltip:Show()
+                    break
+                end
             end
-        end
+        end)
     end)
 end
 
@@ -449,10 +487,159 @@ end
 
 -- ==================== INSPECT HANDLING ====================
 KDT.pendingInspects = {}
+KDT.specCache = {}
+
+-- Create event frame for INSPECT_READY and CHALLENGE_MODE events
+local eventFrame = CreateFrame("Frame")
+eventFrame:RegisterEvent("INSPECT_READY")
+eventFrame:RegisterEvent("CHALLENGE_MODE_COMPLETED")
+eventFrame:RegisterEvent("CHALLENGE_MODE_RESET")
+eventFrame:RegisterEvent("SCENARIO_COMPLETED")
+eventFrame:SetScript("OnEvent", function(self, event, ...)
+    if event == "INSPECT_READY" then
+        local guid = ...
+        if guid then
+            KDT:OnInspectReady(guid)
+        end
+    elseif event == "CHALLENGE_MODE_COMPLETED" then
+        -- M+ dungeon was completed!
+        KDT:OnChallengeModeCompleted()
+    elseif event == "SCENARIO_COMPLETED" then
+        -- Scenario completed (backup for M+)
+        if C_ChallengeMode.IsChallengeModeActive and C_ChallengeMode.IsChallengeModeActive() then
+            KDT:OnChallengeModeCompleted()
+        end
+    elseif event == "CHALLENGE_MODE_RESET" then
+        -- M+ was reset (left dungeon or started new)
+        KDT:OnChallengeModeReset()
+    end
+end)
+
+function KDT:OnChallengeModeCompleted()
+    local state = self.timerState
+    
+    self:Print("|cFFFFFF00[Debug] CHALLENGE_MODE_COMPLETED event fired!|r")
+    
+    -- Prevent double-save
+    if state.completed then 
+        self:Print("|cFFFFFF00[Debug] Already completed, skipping.|r")
+        return 
+    end
+    
+    -- Get completion info - try multiple API methods
+    local mapID, level, completionTime, onTime, keystoneUpgradeLevels
+    
+    -- Method 1: GetCompletionInfo (returns multiple values)
+    if C_ChallengeMode.GetCompletionInfo then
+        mapID, level, completionTime, onTime, keystoneUpgradeLevels = C_ChallengeMode.GetCompletionInfo()
+        self:Print("|cFFFFFF00[Debug] GetCompletionInfo: mapID=" .. tostring(mapID) .. " level=" .. tostring(level) .. " time=" .. tostring(completionTime) .. "|r")
+    end
+    
+    -- Method 2: GetChallengeCompletionInfo (returns table in newer API)
+    if not completionTime or completionTime == 0 then
+        if C_ChallengeMode.GetChallengeCompletionInfo then
+            local info = C_ChallengeMode.GetChallengeCompletionInfo()
+            if info then
+                completionTime = info.time
+                mapID = info.mapChallengeModeID or mapID
+                level = info.level or level
+                self:Print("|cFFFFFF00[Debug] GetChallengeCompletionInfo: time=" .. tostring(completionTime) .. "|r")
+            end
+        end
+    end
+    
+    -- Use data if available
+    if completionTime and completionTime > 0 then
+        state.completed = true
+        state.completedTime = completionTime / 1000 -- Convert from milliseconds
+        state.active = false
+        
+        -- Update level and mapID if available
+        if level and level > 0 then state.level = level end
+        if mapID and mapID > 0 then 
+            state.mapID = mapID
+            state.dungeonName = self:GetDungeonName(mapID) or self:GetShortDungeonName(mapID) or state.dungeonName
+        end
+        
+        -- Save to history
+        self:SaveRunToHistory()
+        self:Print("|cFF00FF00M+ completed! Time: " .. self:FormatTime(state.completedTime) .. "|r")
+    else
+        -- Fallback: use elapsed time from timer state
+        self:Print("|cFFFFFF00[Debug] Using fallback elapsed time: " .. tostring(state.elapsed) .. "|r")
+        state.completed = true
+        state.completedTime = state.elapsed or 0
+        state.active = false
+        self:SaveRunToHistory()
+        self:Print("|cFF00FF00M+ completed! Time: " .. self:FormatTime(state.completedTime) .. "|r")
+    end
+    
+    -- Refresh timer UI if open
+    if self.MainFrame and self.MainFrame:IsShown() and self.MainFrame.currentTab == "timer" then
+        self.MainFrame:RefreshTimer()
+    end
+end
+
+function KDT:OnChallengeModeReset()
+    -- Reset timer state when leaving dungeon or resetting
+    local state = self.timerState
+    if not state.completed then
+        state.active = false
+    end
+end
 
 function KDT:OnInspectReady(guid)
     if not guid then return end
     
+    -- Find the unit with this GUID
+    local unit = nil
+    if UnitGUID("target") == guid then
+        unit = "target"
+    else
+        -- Check party/raid members
+        for i = 1, 4 do
+            if UnitGUID("party" .. i) == guid then
+                unit = "party" .. i
+                break
+            end
+        end
+        if not unit then
+            for i = 1, 40 do
+                if UnitGUID("raid" .. i) == guid then
+                    unit = "raid" .. i
+                    break
+                end
+            end
+        end
+    end
+    
+    if unit and UnitExists(unit) then
+        local specID = GetInspectSpecialization(unit)
+        if specID and specID > 0 then
+            local _, specName, _, _, role = GetSpecializationInfoByID(specID)
+            if specName then
+                -- Cache the spec data
+                if not self.specCache then self.specCache = {} end
+                self.specCache[guid] = {
+                    specID = specID,
+                    specName = specName,
+                    role = role,
+                    time = GetTime()
+                }
+                
+                -- Refresh group UI if it's open
+                if self.MainFrame and self.MainFrame:IsShown() and self.MainFrame.currentTab == "group" then
+                    C_Timer.After(0.1, function()
+                        if self.MainFrame.RefreshGroup then
+                            self.MainFrame:RefreshGroup()
+                        end
+                    end)
+                end
+            end
+        end
+    end
+    
+    -- Call any pending callback
     local callback = self.pendingInspects[guid]
     if callback then
         callback(guid)

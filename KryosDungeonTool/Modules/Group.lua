@@ -57,9 +57,9 @@ end
 function KDT:RefreshGroupInfo()
     local units = self:GetGroupUnits()
     
-    -- Request inspects for spec data
+    -- Request inspects for spec data (don't require UnitIsVisible)
     for _, unit in ipairs(units) do
-        if UnitIsConnected(unit) and UnitIsVisible(unit) then
+        if UnitIsConnected(unit) and CanInspect(unit) then
             self:QueueInspect(unit)
         end
     end
@@ -162,7 +162,7 @@ function KDT:GetUnitSpec(unit)
         return nil
     end
     
-    -- Check cache first (from Events.lua inspect system)
+    -- Check cache first (from INSPECT_READY event)
     if guid and self.specCache and self.specCache[guid] and self.specCache[guid].specName then
         return self.specCache[guid]
     end
@@ -181,6 +181,17 @@ function KDT:GetUnitSpec(unit)
                 time = GetTime()
             }
             return self.specCache[guid]
+        end
+    end
+    
+    -- Request inspect if we don't have data (will update via INSPECT_READY event)
+    if guid and UnitIsConnected(unit) and CanInspect(unit) then
+        -- Check if we haven't requested recently
+        local lastRequest = self.lastInspectRequest and self.lastInspectRequest[guid]
+        if not lastRequest or (GetTime() - lastRequest) > 5 then
+            if not self.lastInspectRequest then self.lastInspectRequest = {} end
+            self.lastInspectRequest[guid] = GetTime()
+            NotifyInspect(unit)
         end
     end
     
@@ -555,13 +566,55 @@ function KDT:PostToChat()
     self:Print("Group info posted to chat.")
 end
 
--- Queue inspect for a unit (simple implementation)
+-- Queue inspect for a unit (improved with retry logic)
 function KDT:QueueInspect(unit)
     if not unit or not UnitExists(unit) then return end
     if UnitIsUnit(unit, "player") then return end
     if not UnitIsConnected(unit) then return end
+    
+    local guid = UnitGUID(unit)
+    if not guid then return end
+    
+    -- Check if we already have cached data (and it's recent - less than 5 min old)
+    if self.specCache and self.specCache[guid] and self.specCache[guid].specName then
+        local cacheTime = self.specCache[guid].time or 0
+        if (GetTime() - cacheTime) < 300 then
+            return
+        end
+    end
+    
+    -- Check if we can inspect (may fail silently if out of range)
     if not CanInspect(unit) then return end
     
-    -- Simply notify inspect - spec data will be retrieved via GetInspectSpecialization
+    -- Notify inspect - the INSPECT_READY event will handle the result
     NotifyInspect(unit)
+end
+
+function KDT:ProcessInspectResult(unit, guid)
+    -- This function is kept for backwards compatibility but main handling is in Events.lua
+    if not unit or not UnitExists(unit) then return end
+    
+    local specID = GetInspectSpecialization(unit)
+    if specID and specID > 0 then
+        local _, specName, _, _, role = GetSpecializationInfoByID(specID)
+        if specName then
+            -- Cache it
+            if not self.specCache then self.specCache = {} end
+            self.specCache[guid] = {
+                specID = specID,
+                specName = specName,
+                role = role,
+                time = GetTime()
+            }
+            
+            -- Refresh the group UI if available
+            if self.MainFrame and self.MainFrame:IsShown() and self.MainFrame.currentTab == "group" then
+                C_Timer.After(0.1, function()
+                    if self.MainFrame.RefreshGroup then
+                        self.MainFrame:RefreshGroup()
+                    end
+                end)
+            end
+        end
+    end
 end

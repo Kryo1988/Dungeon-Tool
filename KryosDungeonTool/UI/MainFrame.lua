@@ -35,8 +35,28 @@ function KDT:CreateMainFrame()
     f:SetBackdropBorderColor(0.2, 0.2, 0.25, 1)
     f:Hide()
     
-    -- Register with UISpecialFrames for ESC handling (standard WoW method)
-    tinsert(UISpecialFrames, "KryosDTMain")
+    -- ESC to close: Use global escape handler that doesn't block other keys
+    f:SetScript("OnShow", function(self)
+        -- Register for ESC key only when shown
+        if not self.escHandler then
+            self.escHandler = CreateFrame("Frame", nil, self)
+            self.escHandler:SetScript("OnKeyDown", function(handler, key)
+                if key == "ESCAPE" then
+                    handler:SetPropagateKeyboardInput(false)
+                    f:Hide()
+                else
+                    handler:SetPropagateKeyboardInput(true)
+                end
+            end)
+        end
+        self.escHandler:EnableKeyboard(true)
+    end)
+    
+    f:SetScript("OnHide", function(self)
+        if self.escHandler then
+            self.escHandler:EnableKeyboard(false)
+        end
+    end)
     
     f.currentTab = "group"
     f.groupElements = {}

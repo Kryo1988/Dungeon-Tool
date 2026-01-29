@@ -704,29 +704,49 @@ function KDT:UpdateTimerFromGame()
                 -- Update scenario info
                 self:UpdateScenarioInfo()
                 
-                -- Check for completion via multiple methods
+                -- Check for completion via multiple methods (fallback if event didn't fire)
                 if not state.completed then
                     local isComplete = false
                     local completedTime = 0
                     
-                    -- Method 1: C_ChallengeMode.GetChallengeCompletionInfo
-                    local completionInfo = C_ChallengeMode.GetChallengeCompletionInfo()
-                    if completionInfo and completionInfo.time and completionInfo.time > 0 then
+                    -- Method 1: C_ChallengeMode.GetCompletionInfo (most reliable)
+                    local mapChallenge, levelChallenge, timeChallenge = C_ChallengeMode.GetCompletionInfo()
+                    if timeChallenge and timeChallenge > 0 then
                         isComplete = true
-                        completedTime = completionInfo.time / 1000
+                        completedTime = timeChallenge / 1000
                     end
                     
-                    -- Method 2: Check if all bosses are killed and forces at 100%
-                    if not isComplete and state.forcesPercent >= 100 then
+                    -- Method 2: C_ChallengeMode.GetChallengeCompletionInfo (WoW 12.0+)
+                    if not isComplete then
+                        local completionInfo = C_ChallengeMode.GetChallengeCompletionInfo and C_ChallengeMode.GetChallengeCompletionInfo()
+                        if completionInfo and completionInfo.time and completionInfo.time > 0 then
+                            isComplete = true
+                            completedTime = completionInfo.time / 1000
+                        end
+                    end
+                    
+                    -- Method 3: C_Scenario.IsComplete
+                    if not isComplete then
+                        local scenarioComplete = C_Scenario.IsComplete and C_Scenario.IsComplete()
+                        if scenarioComplete then
+                            isComplete = true
+                            completedTime = elapsedTime
+                        end
+                    end
+                    
+                    -- Method 4: Check if all bosses are killed and forces >= 99.4%
+                    if not isComplete and state.forcesPercent >= 99.4 then
                         local allBossesKilled = true
+                        local bossCount = 0
                         if state.bosses and #state.bosses > 0 then
                             for _, boss in ipairs(state.bosses) do
+                                bossCount = bossCount + 1
                                 if not boss.killed then
                                     allBossesKilled = false
                                     break
                                 end
                             end
-                            if allBossesKilled then
+                            if bossCount > 0 and allBossesKilled then
                                 isComplete = true
                                 completedTime = elapsedTime
                             end
@@ -735,10 +755,11 @@ function KDT:UpdateTimerFromGame()
                     
                     if isComplete then
                         state.completed = true
-                        state.completedTime = completedTime
+                        state.completedTime = completedTime > 0 and completedTime or elapsedTime
                         state.active = false
                         -- Save to history
                         self:SaveRunToHistory()
+                        self:Print("|cFF00FF00M+ completed! Time: " .. self:FormatTime(state.completedTime) .. "|r")
                     end
                 end
             end
@@ -960,8 +981,8 @@ function KDT:SaveRunToHistory()
     -- Add to history (at the beginning)
     table.insert(self.DB.runHistory, 1, runEntry)
     
-    -- Keep only last 10 runs
-    while #self.DB.runHistory > 10 do
+    -- Keep only last 30 runs
+    while #self.DB.runHistory > 30 do
         table.remove(self.DB.runHistory)
     end
     
@@ -975,5 +996,51 @@ end
 function KDT:ClearRunHistory()
     self.DB.runHistory = {}
     self:Print("Run history cleared.")
+end
+
+-- ==================== HIDE/SHOW DEFAULT WOW TIMER ====================
+function KDT:UpdateDefaultTimerVisibility()
+    -- Only hide if our timer overlay is enabled
+    local shouldHide = self.DB and self.DB.timer and self.DB.timer.enabled
+    
+    -- Try various methods to hide the default M+ timer (WoW 12.0 compatible)
+    -- Method 1: ScenarioBlocksFrame (older versions)
+    if ScenarioBlocksFrame then
+        if shouldHide then
+            ScenarioBlocksFrame:SetAlpha(0)
+        else
+            ScenarioBlocksFrame:SetAlpha(1)
+        end
+    end
+    
+    -- Method 2: ObjectiveTrackerFrame ScenarioHeader
+    if ObjectiveTrackerFrame and ObjectiveTrackerFrame.BlocksFrame then
+        local blocksFrame = ObjectiveTrackerFrame.BlocksFrame
+        if blocksFrame.ScenarioHeader then
+            if shouldHide then
+                blocksFrame.ScenarioHeader:SetAlpha(0)
+            else
+                blocksFrame.ScenarioHeader:SetAlpha(1)
+            end
+        end
+    end
+    
+    -- Method 3: ScenarioObjectiveTracker (WoW 12.0+)
+    if ScenarioObjectiveTracker then
+        if shouldHide then
+            ScenarioObjectiveTracker:SetAlpha(0)
+        else
+            ScenarioObjectiveTracker:SetAlpha(1)
+        end
+    end
+    
+    -- Method 4: ObjectiveTrackerScenarioHeader (alternative)
+    if ObjectiveTrackerScenarioHeader then
+        if shouldHide then
+            ObjectiveTrackerScenarioHeader:SetAlpha(0)
+        else
+            ObjectiveTrackerScenarioHeader:SetAlpha(1)
+        end
+    end
 end
 
