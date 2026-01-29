@@ -253,7 +253,7 @@ function KDT:Print(msg)
 end
 
 -- Version
-KDT.version = "1.7.8"
+KDT.version = "1.8.3"
 
 -- Already alerted (for blacklist)
 KDT.alreadyAlerted = {}

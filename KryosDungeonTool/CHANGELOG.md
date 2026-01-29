@@ -1,5 +1,79 @@
 # KryosDungeonTool Changelog
 
+## Version 1.8.3 (2026-01-29)
+
+### Bug Fixes
+- **Fixed Death Counter Display**: The death counter was showing 0 even when deaths occurred
+  - **Root Cause**: In Lua, `0` is treated as "falsy" in `or` expressions, so `state.deaths or deaths` would ignore `state.deaths` when it was 0
+  - **Fix 1**: Changed to explicit nil check: `if state.deaths ~= nil then deaths = state.deaths end`
+  - **Fix 2**: Added direct API call in UpdateExternalTimer to always get fresh death count from `C_ChallengeMode.GetDeathCount()`
+  - **Fix 3**: UpdateTimerFromGame now always updates `state.deaths` with API value (removed `>` comparison that could skip updates)
+
+---
+
+## Version 1.8.2 (2026-01-29)
+
+### Bug Fixes - Duplicate Run Entries
+- **Removed SCENARIO_COMPLETED Event Handler**: This event was firing alongside CHALLENGE_MODE_COMPLETED, causing duplicate saves
+- **Improved Save Protection**: 
+  - Added `saveScheduled` flag to prevent multiple delayed saves
+  - OnChallengeModeCompleted now checks `savedToHistory` before attempting to save
+  - Backup save delay increased from 2 to 5 seconds
+- **All save paths now check `savedToHistory` flag before saving**
+
+### Save Flow (v1.8.2):
+1. M+ completion detected
+2. CHALLENGE_MODE_COMPLETED event fires → OnChallengeModeCompleted() → SaveRunToHistory() (sets savedToHistory=true)
+3. If event doesn't fire: Polling detects completion → Schedules backup save in 5 seconds
+4. Backup save checks savedToHistory flag → Skips if already saved
+
+---
+
+## Version 1.8.1 (2026-01-29)
+
+### Bug Fixes
+- **Fixed "attempt to compare a secret value" Error**: WoW 12.0 introduced "secret" GUIDs that cannot be directly compared with `==`. All GUID comparisons and table key usages now convert GUIDs to strings using `tostring()` before use.
+- Fixed GUID comparisons in:
+  - `OnInspectReady()` - now uses safe GUID matching with pcall
+  - `specCache` table keys - all converted to string GUIDs
+  - `pendingInspects` table keys - all converted to string GUIDs
+  - `lastInspectRequest` table keys - all converted to string GUIDs
+  - Spec refresh ticker - uses string GUIDs for cache lookup
+
+---
+
+## Version 1.8.0 (2026-01-29)
+
+### Bug Fixes
+- **Fixed API Error**: `C_ChallengeMode.GetCompletionInfo` is properly checked before calling (was causing nil error in WoW 12.0)
+- **Fixed Duplicate Run Entries**: Added `savedToHistory` flag to prevent runs from being saved multiple times
+  - Flag is checked at the start of SaveRunToHistory
+  - Flag is reset when starting a new M+ run
+  - Flag is reset in ResetTimer
+  - Duplicate check time window increased from 60 to 120 seconds as additional safety
+
+### Technical Changes
+- All API calls now properly check if the function exists before calling
+- Removed debug spam messages from completion detection
+
+---
+
+## Version 1.7.9 (2026-01-29)
+
+### Bug Fixes - Timer Display
+- **Timer Now Updates in M+**: Fixed issue where timer showed but stayed at 0:00. The timer now fetches data directly from the WoW API when in M+, even if the internal state hasn't been initialized yet.
+- **Direct API Data Fetching**: Timer overlay now gets elapsed time, time limit, deaths, and forces percentage directly from game APIs:
+  - `GetWorldElapsedTime(1)` for elapsed time
+  - `C_ChallengeMode.GetMapUIInfo()` for time limit
+  - `C_ChallengeMode.GetDeathCount()` for deaths
+  - `C_ScenarioInfo.GetCriteriaInfo()` for forces percentage
+- **Forces Display**: Improved forces percentage display format
+
+### Improved Debug Command
+- `/kdt debugtimer` now shows both internal state AND direct API values for easier troubleshooting
+
+---
+
 ## Version 1.7.8 (2026-01-29)
 
 ### Bug Fixes

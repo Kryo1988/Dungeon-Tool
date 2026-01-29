@@ -147,6 +147,7 @@ function KDT:GetUnitSpec(unit)
     if not unit or not UnitExists(unit) then return nil end
     
     local guid = UnitGUID(unit)
+    local guidKey = guid and tostring(guid) or nil
     
     -- Check if it's the player
     if UnitIsUnit(unit, "player") then
@@ -163,8 +164,8 @@ function KDT:GetUnitSpec(unit)
     end
     
     -- Check cache first (from INSPECT_READY event)
-    if guid and self.specCache and self.specCache[guid] and self.specCache[guid].specName then
-        return self.specCache[guid]
+    if guidKey and self.specCache and self.specCache[guidKey] and self.specCache[guidKey].specName then
+        return self.specCache[guidKey]
     end
     
     -- Try to get spec directly (might work if inspect was done recently)
@@ -174,23 +175,23 @@ function KDT:GetUnitSpec(unit)
         if specName then
             -- Cache it
             if not self.specCache then self.specCache = {} end
-            self.specCache[guid] = {
+            self.specCache[guidKey] = {
                 specID = specID,
                 specName = specName,
                 role = role,
                 time = GetTime()
             }
-            return self.specCache[guid]
+            return self.specCache[guidKey]
         end
     end
     
     -- Request inspect if we don't have data (will update via INSPECT_READY event)
-    if guid and UnitIsConnected(unit) and CanInspect(unit) then
+    if guidKey and UnitIsConnected(unit) and CanInspect(unit) then
         -- Check if we haven't requested recently
-        local lastRequest = self.lastInspectRequest and self.lastInspectRequest[guid]
+        local lastRequest = self.lastInspectRequest and self.lastInspectRequest[guidKey]
         if not lastRequest or (GetTime() - lastRequest) > 5 then
             if not self.lastInspectRequest then self.lastInspectRequest = {} end
-            self.lastInspectRequest[guid] = GetTime()
+            self.lastInspectRequest[guidKey] = GetTime()
             NotifyInspect(unit)
         end
     end
@@ -574,10 +575,11 @@ function KDT:QueueInspect(unit)
     
     local guid = UnitGUID(unit)
     if not guid then return end
+    local guidKey = tostring(guid)
     
     -- Check if we already have cached data (and it's recent - less than 5 min old)
-    if self.specCache and self.specCache[guid] and self.specCache[guid].specName then
-        local cacheTime = self.specCache[guid].time or 0
+    if self.specCache and self.specCache[guidKey] and self.specCache[guidKey].specName then
+        local cacheTime = self.specCache[guidKey].time or 0
         if (GetTime() - cacheTime) < 300 then
             return
         end
@@ -594,13 +596,16 @@ function KDT:ProcessInspectResult(unit, guid)
     -- This function is kept for backwards compatibility but main handling is in Events.lua
     if not unit or not UnitExists(unit) then return end
     
+    local guidKey = guid and tostring(guid) or nil
+    if not guidKey then return end
+    
     local specID = GetInspectSpecialization(unit)
     if specID and specID > 0 then
         local _, specName, _, _, role = GetSpecializationInfoByID(specID)
         if specName then
             -- Cache it
             if not self.specCache then self.specCache = {} end
-            self.specCache[guid] = {
+            self.specCache[guidKey] = {
                 specID = specID,
                 specName = specName,
                 role = role,

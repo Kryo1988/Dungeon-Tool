@@ -93,30 +93,51 @@ SlashCmdList["KDT"] = function(msg)
         -- Debug timer state
         KDT:Print("=== Timer Debug ===")
         local state = KDT.timerState
-        KDT:Print("active: " .. tostring(state.active))
-        KDT:Print("completed: " .. tostring(state.completed))
-        KDT:Print("elapsed: " .. tostring(state.elapsed))
-        KDT:Print("completedTime: " .. tostring(state.completedTime))
-        KDT:Print("timeLimit: " .. tostring(state.timeLimit))
-        KDT:Print("dungeonName: " .. tostring(state.dungeonName))
-        KDT:Print("level: " .. tostring(state.level))
-        KDT:Print("mapID: " .. tostring(state.mapID))
-        KDT:Print("forcesPercent: " .. tostring(state.forcesPercent))
-        KDT:Print("deaths: " .. tostring(state.deaths))
-        KDT:Print("bosses: " .. tostring(state.bosses and #state.bosses or 0))
+        KDT:Print("state.active: " .. tostring(state.active))
+        KDT:Print("state.completed: " .. tostring(state.completed))
+        KDT:Print("state.elapsed: " .. tostring(state.elapsed))
+        KDT:Print("state.completedTime: " .. tostring(state.completedTime))
+        KDT:Print("state.timeLimit: " .. tostring(state.timeLimit))
+        KDT:Print("state.dungeonName: " .. tostring(state.dungeonName))
+        KDT:Print("state.level: " .. tostring(state.level))
+        KDT:Print("state.mapID: " .. tostring(state.mapID))
+        KDT:Print("state.forcesPercent: " .. tostring(state.forcesPercent))
+        KDT:Print("state.forcesCurrent: " .. tostring(state.forcesCurrent))
+        KDT:Print("state.forcesTotal: " .. tostring(state.forcesTotal))
+        KDT:Print("state.deaths: " .. tostring(state.deaths))
+        KDT:Print("state.bosses: " .. tostring(state.bosses and #state.bosses or 0))
         if state.bosses then
             for i, boss in ipairs(state.bosses) do
                 KDT:Print("  Boss " .. i .. ": " .. (boss.name or "?") .. " killed=" .. tostring(boss.killed))
             end
         end
-        -- Check API
-        KDT:Print("--- API Check ---")
-        KDT:Print("IsChallengeModeActive: " .. tostring(C_ChallengeMode.IsChallengeModeActive and C_ChallengeMode.IsChallengeModeActive()))
-        local activeInfo = C_ChallengeMode.GetActiveChallengeMapID and C_ChallengeMode.GetActiveChallengeMapID()
-        KDT:Print("GetActiveChallengeMapID: " .. tostring(activeInfo))
-        local compInfo = C_ChallengeMode.GetCompletionInfo and C_ChallengeMode.GetCompletionInfo()
-        if compInfo then
-            KDT:Print("GetCompletionInfo: mapID=" .. tostring(compInfo))
+        -- Check direct API values
+        KDT:Print("--- Direct API Check ---")
+        local inChallenge = C_ChallengeMode.IsChallengeModeActive and C_ChallengeMode.IsChallengeModeActive()
+        KDT:Print("IsChallengeModeActive: " .. tostring(inChallenge))
+        
+        local mapID = C_ChallengeMode.GetActiveChallengeMapID and C_ChallengeMode.GetActiveChallengeMapID()
+        KDT:Print("GetActiveChallengeMapID: " .. tostring(mapID))
+        
+        local keystoneLevel = C_ChallengeMode.GetActiveKeystoneInfo and C_ChallengeMode.GetActiveKeystoneInfo()
+        KDT:Print("GetActiveKeystoneInfo (level): " .. tostring(keystoneLevel))
+        
+        if mapID then
+            local name, _, timeLimit = C_ChallengeMode.GetMapUIInfo(mapID)
+            KDT:Print("GetMapUIInfo name: " .. tostring(name))
+            KDT:Print("GetMapUIInfo timeLimit: " .. tostring(timeLimit))
+        end
+        
+        local _, elapsedTime = GetWorldElapsedTime(1)
+        KDT:Print("GetWorldElapsedTime(1): " .. tostring(elapsedTime))
+        
+        local deaths = C_ChallengeMode.GetDeathCount and C_ChallengeMode.GetDeathCount()
+        KDT:Print("GetDeathCount: " .. tostring(deaths))
+        
+        -- Scenario info
+        if C_Scenario and C_Scenario.GetStepInfo then
+            local _, _, numCriteria = C_Scenario.GetStepInfo()
+            KDT:Print("Scenario numCriteria: " .. tostring(numCriteria))
         end
         
     elseif cmd == "testrun" then

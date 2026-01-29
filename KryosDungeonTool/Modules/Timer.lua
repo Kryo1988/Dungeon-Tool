@@ -310,9 +310,99 @@ function KDT:UpdateExternalTimer()
     
     f:Show()
     
-    -- Get times
-    local elapsed = state.completed and state.completedTime or (state.elapsed or 0)
-    local timeLimit = state.timeLimit or 1
+    -- Get times - fetch directly from API if in M+ and state not yet initialized
+    local elapsed = 0
+    local timeLimit = 1
+    local deaths = 0
+    local dungeonName = "Unknown"
+    local level = 0
+    local forcesPercent = 0
+    
+    if inMythicPlus then
+        -- Get data directly from API
+        local mapID = C_ChallengeMode.GetActiveChallengeMapID()
+        local keystoneLevel = C_ChallengeMode.GetActiveKeystoneInfo()
+        
+        if mapID then
+            local name, _, limit = C_ChallengeMode.GetMapUIInfo(mapID)
+            if limit and limit > 0 then
+                timeLimit = limit
+            end
+            if name then
+                dungeonName = name
+            end
+        end
+        
+        if keystoneLevel then
+            level = keystoneLevel
+        end
+        
+        -- Get elapsed time
+        local _, elapsedTime = GetWorldElapsedTime(1)
+        if elapsedTime and elapsedTime > 0 then
+            elapsed = elapsedTime
+        end
+        
+        -- Get deaths
+        local deathCount = C_ChallengeMode.GetDeathCount()
+        if deathCount then
+            deaths = deathCount
+        end
+        
+        -- Update state if not yet set
+        if not state.active and elapsed > 0 then
+            state.active = true
+            state.elapsed = elapsed
+            state.timeLimit = timeLimit
+            state.dungeonName = dungeonName
+            state.level = level
+            state.deaths = deaths
+        end
+        
+        -- Get forces from scenario info
+        local numCriteria = 0
+        if C_Scenario and C_Scenario.GetStepInfo then
+            local _, _, numCrit = C_Scenario.GetStepInfo()
+            numCriteria = numCrit or 0
+        end
+        
+        for i = 1, numCriteria do
+            local criteriaInfo = C_ScenarioInfo and C_ScenarioInfo.GetCriteriaInfo(i)
+            if criteriaInfo then
+                -- Check if this is the enemy forces criteria
+                if criteriaInfo.isWeightedProgress then
+                    local current = criteriaInfo.quantity or 0
+                    local total = criteriaInfo.totalQuantity or 1
+                    if total > 0 then
+                        forcesPercent = (current / total) * 100
+                    end
+                    break
+                end
+            end
+        end
+    end
+    
+    -- Use state values if available (they may be more up-to-date)
+    if state.active then
+        elapsed = state.completed and state.completedTime or (state.elapsed or elapsed)
+        timeLimit = state.timeLimit or timeLimit
+        -- Don't use "or" for deaths because 0 is a valid value
+        if state.deaths ~= nil then deaths = state.deaths end
+        forcesPercent = state.forcesPercent or forcesPercent
+    end
+    
+    -- Always get deaths from API when in M+ (most reliable source)
+    if inMythicPlus then
+        local apiDeaths = C_ChallengeMode.GetDeathCount()
+        if apiDeaths and apiDeaths > 0 then
+            deaths = apiDeaths
+            state.deaths = apiDeaths -- Update state too
+        end
+    end
+    
+    -- Ensure timeLimit is never 0 to avoid division issues
+    if timeLimit <= 0 then timeLimit = 1 end
+    
     local plus3Time = timeLimit * 0.6
     local plus2Time = timeLimit * 0.8
     local plus1Time = timeLimit
@@ -331,7 +421,7 @@ function KDT:UpdateExternalTimer()
     end
     
     -- ==================== Deaths ====================
-    f.deathText:SetText("[" .. (state.deaths or 0) .. "]")
+    f.deathText:SetText("[" .. (deaths or 0) .. "]")
     f.deathText:SetTextColor(unpack(colors.deaths or defaultColors.deaths))
     
     -- ==================== Split Bars ====================
@@ -376,11 +466,17 @@ function KDT:UpdateExternalTimer()
     end
     
     -- ==================== Forces ====================
-    local forcesPct = state.forcesPercent or 0
+    local forcesPct = forcesPercent
+    if state.forcesPercent and state.forcesPercent > 0 then
+        forcesPct = state.forcesPercent
+    end
     local forcesCurrent = state.forcesCurrent or 0
     local forcesTotal = state.forcesTotal or 0
     
-    local forcesStr = string.format("%.2f%% (%d/%d)", forcesPct, forcesCurrent, forcesTotal)
+    local forcesStr = string.format("%.1f%%", forcesPct)
+    if forcesTotal > 0 then
+        forcesStr = string.format("%.1f%% (%d/%d)", forcesPct, forcesCurrent, forcesTotal)
+    end
     f.forcesText:SetText(forcesStr)
     
     if forcesPct >= 100 then
@@ -698,6 +794,8 @@ function KDT:UpdateTimerFromGame()
                     state.forcesCurrent = 0
                     state.forcesTotal = 0
                     state.forcesPercent = 0
+                    state.savedToHistory = false -- Reset save flag for new run
+                    state.saveScheduled = false -- Reset schedule flag for new run
                     
                     self:Print("M+ Timer started: " .. state.dungeonName .. " +" .. state.level)
                 end
@@ -705,30 +803,33 @@ function KDT:UpdateTimerFromGame()
                 state.elapsed = elapsedTime
                 state.timeLimit = timeLimit
                 
-                -- Update death count
-                local deaths, timeLost = C_ChallengeMode.GetDeathCount()
-                if deaths and deaths > state.deaths then
-                    state.deaths = deaths
+                -- Update death count (always use API value as source of truth)
+                local apiDeaths, timeLost = C_ChallengeMode.GetDeathCount()
+                if apiDeaths then
+                    state.deaths = apiDeaths
                 end
                 
                 -- Update scenario info
                 self:UpdateScenarioInfo()
                 
                 -- Check for completion via multiple methods (fallback if event didn't fire)
+                -- Note: The CHALLENGE_MODE_COMPLETED event should handle saving, this is just backup
                 if not state.completed then
                     local isComplete = false
                     local completedTime = 0
                     
-                    -- Method 1: C_ChallengeMode.GetCompletionInfo (most reliable)
-                    local mapChallenge, levelChallenge, timeChallenge = C_ChallengeMode.GetCompletionInfo()
-                    if timeChallenge and timeChallenge > 0 then
-                        isComplete = true
-                        completedTime = timeChallenge / 1000
+                    -- Method 1: C_ChallengeMode.GetCompletionInfo (check if exists first)
+                    if C_ChallengeMode.GetCompletionInfo then
+                        local mapChallenge, levelChallenge, timeChallenge = C_ChallengeMode.GetCompletionInfo()
+                        if timeChallenge and timeChallenge > 0 then
+                            isComplete = true
+                            completedTime = timeChallenge / 1000
+                        end
                     end
                     
                     -- Method 2: C_ChallengeMode.GetChallengeCompletionInfo (WoW 12.0+)
-                    if not isComplete then
-                        local completionInfo = C_ChallengeMode.GetChallengeCompletionInfo and C_ChallengeMode.GetChallengeCompletionInfo()
+                    if not isComplete and C_ChallengeMode.GetChallengeCompletionInfo then
+                        local completionInfo = C_ChallengeMode.GetChallengeCompletionInfo()
                         if completionInfo and completionInfo.time and completionInfo.time > 0 then
                             isComplete = true
                             completedTime = completionInfo.time / 1000
@@ -736,8 +837,8 @@ function KDT:UpdateTimerFromGame()
                     end
                     
                     -- Method 3: C_Scenario.IsComplete
-                    if not isComplete then
-                        local scenarioComplete = C_Scenario.IsComplete and C_Scenario.IsComplete()
+                    if not isComplete and C_Scenario and C_Scenario.IsComplete then
+                        local scenarioComplete = C_Scenario.IsComplete()
                         if scenarioComplete then
                             isComplete = true
                             completedTime = elapsedTime
@@ -767,8 +868,16 @@ function KDT:UpdateTimerFromGame()
                         state.completed = true
                         state.completedTime = completedTime > 0 and completedTime or elapsedTime
                         state.active = false
-                        -- Save to history
-                        self:SaveRunToHistory()
+                        -- Don't save here - the event handler will do it
+                        -- If no event fires within 5 seconds, we save as backup
+                        if not state.saveScheduled then
+                            state.saveScheduled = true
+                            C_Timer.After(5, function()
+                                if state.completed and not state.savedToHistory then
+                                    self:SaveRunToHistory()
+                                end
+                            end)
+                        end
                         self:Print("|cFF00FF00M+ completed! Time: " .. self:FormatTime(state.completedTime) .. "|r")
                     end
                 end
@@ -926,14 +1035,18 @@ function KDT:ResetTimer()
     state.forcesTotal = 0
     state.forcesPercent = 0
     state.bosses = {}
+    state.savedToHistory = false
+    state.saveScheduled = false
 end
 
 -- ==================== RUN HISTORY ====================
 function KDT:SaveRunToHistory()
     local state = self.timerState
     
-    -- Debug
-    -- self:Print("SaveRunToHistory called: completed=" .. tostring(state.completed) .. " dungeon=" .. tostring(state.dungeonName))
+    -- Prevent duplicate saves with flag
+    if state.savedToHistory then
+        return
+    end
     
     if not state.completed then
         return
@@ -958,6 +1071,19 @@ function KDT:SaveRunToHistory()
     local completedTime = state.completedTime
     if completedTime == 0 or not completedTime then
         completedTime = state.elapsed or 0
+    end
+    
+    -- Check for duplicate (same dungeon, level, and time within 120 seconds)
+    local currentTime = time()
+    for _, existingRun in ipairs(self.DB.runHistory) do
+        if existingRun.dungeon == dungeonName and 
+           existingRun.level == (state.level or 0) and
+           existingRun.timestamp and 
+           math.abs(currentTime - existingRun.timestamp) < 120 then
+            -- Duplicate detected, skip
+            state.savedToHistory = true -- Mark as saved to prevent further attempts
+            return
+        end
     end
     
     -- Calculate if in time
@@ -985,8 +1111,11 @@ function KDT:SaveRunToHistory()
         upgrade = upgrade,
         deaths = state.deaths or 0,
         date = date("%Y-%m-%d %H:%M"),
-        timestamp = time(),
+        timestamp = currentTime,
     }
+    
+    -- Mark as saved BEFORE adding to prevent race conditions
+    state.savedToHistory = true
     
     -- Add to history (at the beginning)
     table.insert(self.DB.runHistory, 1, runEntry)

@@ -110,8 +110,9 @@ EventUtil.ContinueOnAddOnLoaded(addonName, function()
         for _, unit in ipairs(units) do
             if UnitExists(unit) and not UnitIsUnit(unit, "player") then
                 local guid = UnitGUID(unit)
+                local guidKey = guid and tostring(guid) or nil
                 -- Check if we don't have spec data for this player
-                if guid and (not KDT.specCache or not KDT.specCache[guid] or not KDT.specCache[guid].specName) then
+                if guidKey and (not KDT.specCache or not KDT.specCache[guidKey] or not KDT.specCache[guidKey].specName) then
                     -- Try to inspect if possible
                     if UnitIsConnected(unit) and CanInspect(unit) then
                         NotifyInspect(unit)
@@ -494,7 +495,6 @@ local eventFrame = CreateFrame("Frame")
 eventFrame:RegisterEvent("INSPECT_READY")
 eventFrame:RegisterEvent("CHALLENGE_MODE_COMPLETED")
 eventFrame:RegisterEvent("CHALLENGE_MODE_RESET")
-eventFrame:RegisterEvent("SCENARIO_COMPLETED")
 eventFrame:SetScript("OnEvent", function(self, event, ...)
     if event == "INSPECT_READY" then
         local guid = ...
@@ -504,11 +504,6 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
     elseif event == "CHALLENGE_MODE_COMPLETED" then
         -- M+ dungeon was completed!
         KDT:OnChallengeModeCompleted()
-    elseif event == "SCENARIO_COMPLETED" then
-        -- Scenario completed (backup for M+)
-        if C_ChallengeMode.IsChallengeModeActive and C_ChallengeMode.IsChallengeModeActive() then
-            KDT:OnChallengeModeCompleted()
-        end
     elseif event == "CHALLENGE_MODE_RESET" then
         -- M+ was reset (left dungeon or started new)
         KDT:OnChallengeModeReset()
@@ -518,11 +513,8 @@ end)
 function KDT:OnChallengeModeCompleted()
     local state = self.timerState
     
-    self:Print("|cFFFFFF00[Debug] CHALLENGE_MODE_COMPLETED event fired!|r")
-    
-    -- Prevent double-save
-    if state.completed then 
-        self:Print("|cFFFFFF00[Debug] Already completed, skipping.|r")
+    -- Prevent double-processing - check both flags
+    if state.completed and state.savedToHistory then 
         return 
     end
     
@@ -532,7 +524,6 @@ function KDT:OnChallengeModeCompleted()
     -- Method 1: GetCompletionInfo (returns multiple values)
     if C_ChallengeMode.GetCompletionInfo then
         mapID, level, completionTime, onTime, keystoneUpgradeLevels = C_ChallengeMode.GetCompletionInfo()
-        self:Print("|cFFFFFF00[Debug] GetCompletionInfo: mapID=" .. tostring(mapID) .. " level=" .. tostring(level) .. " time=" .. tostring(completionTime) .. "|r")
     end
     
     -- Method 2: GetChallengeCompletionInfo (returns table in newer API)
@@ -543,7 +534,6 @@ function KDT:OnChallengeModeCompleted()
                 completionTime = info.time
                 mapID = info.mapChallengeModeID or mapID
                 level = info.level or level
-                self:Print("|cFFFFFF00[Debug] GetChallengeCompletionInfo: time=" .. tostring(completionTime) .. "|r")
             end
         end
     end
@@ -561,16 +551,21 @@ function KDT:OnChallengeModeCompleted()
             state.dungeonName = self:GetDungeonName(mapID) or self:GetShortDungeonName(mapID) or state.dungeonName
         end
         
-        -- Save to history
-        self:SaveRunToHistory()
+        -- Save to history (only if not already saved)
+        if not state.savedToHistory then
+            self:SaveRunToHistory()
+        end
         self:Print("|cFF00FF00M+ completed! Time: " .. self:FormatTime(state.completedTime) .. "|r")
     else
         -- Fallback: use elapsed time from timer state
-        self:Print("|cFFFFFF00[Debug] Using fallback elapsed time: " .. tostring(state.elapsed) .. "|r")
         state.completed = true
         state.completedTime = state.elapsed or 0
         state.active = false
-        self:SaveRunToHistory()
+        
+        -- Save to history (only if not already saved)
+        if not state.savedToHistory then
+            self:SaveRunToHistory()
+        end
         self:Print("|cFF00FF00M+ completed! Time: " .. self:FormatTime(state.completedTime) .. "|r")
     end
     
@@ -592,20 +587,33 @@ function KDT:OnInspectReady(guid)
     if not guid then return end
     
     -- Find the unit with this GUID
+    -- Use pcall because WoW 12.0 has "secret" GUIDs that can't be compared directly
     local unit = nil
-    if UnitGUID("target") == guid then
+    
+    -- Helper function to safely compare GUIDs
+    local function safeGUIDMatch(unitToCheck, targetGUID)
+        local success, result = pcall(function()
+            local unitGUID = UnitGUID(unitToCheck)
+            if not unitGUID then return false end
+            -- Convert to string for safe comparison
+            return tostring(unitGUID) == tostring(targetGUID)
+        end)
+        return success and result
+    end
+    
+    if safeGUIDMatch("target", guid) then
         unit = "target"
     else
         -- Check party/raid members
         for i = 1, 4 do
-            if UnitGUID("party" .. i) == guid then
+            if safeGUIDMatch("party" .. i, guid) then
                 unit = "party" .. i
                 break
             end
         end
         if not unit then
             for i = 1, 40 do
-                if UnitGUID("raid" .. i) == guid then
+                if safeGUIDMatch("raid" .. i, guid) then
                     unit = "raid" .. i
                     break
                 end
@@ -618,9 +626,10 @@ function KDT:OnInspectReady(guid)
         if specID and specID > 0 then
             local _, specName, _, _, role = GetSpecializationInfoByID(specID)
             if specName then
-                -- Cache the spec data
+                -- Cache the spec data (use string GUID as key)
                 if not self.specCache then self.specCache = {} end
-                self.specCache[guid] = {
+                local guidKey = tostring(guid)
+                self.specCache[guidKey] = {
                     specID = specID,
                     specName = specName,
                     role = role,
@@ -639,11 +648,12 @@ function KDT:OnInspectReady(guid)
         end
     end
     
-    -- Call any pending callback
-    local callback = self.pendingInspects[guid]
+    -- Call any pending callback (use string GUID as key)
+    local guidKey = tostring(guid)
+    local callback = self.pendingInspects[guidKey]
     if callback then
         callback(guid)
-        self.pendingInspects[guid] = nil
+        self.pendingInspects[guidKey] = nil
     end
 end
 
@@ -654,7 +664,8 @@ function KDT:RequestInspect(unit, callback)
     if not guid then return end
     
     if callback then
-        self.pendingInspects[guid] = callback
+        -- Use string GUID as key to avoid secret value issues
+        self.pendingInspects[tostring(guid)] = callback
     end
     
     if CanInspect(unit) then
