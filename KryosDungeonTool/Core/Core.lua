@@ -6,6 +6,8 @@ local addonName, KDT = ...
 -- Default database structure
 local defaults = {
     minimapPos = 220,
+    frameWidth = 700,
+    frameHeight = 550,
     blacklist = {},
     runHistory = {},
     settings = {
@@ -251,7 +253,7 @@ function KDT:Print(msg)
 end
 
 -- Version
-KDT.version = "1.5"
+KDT.version = "1.6"
 
 -- Already alerted (for blacklist)
 KDT.alreadyAlerted = {}

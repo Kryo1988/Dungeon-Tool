@@ -30,11 +30,13 @@ EventUtil.ContinueOnAddOnLoaded(addonName, function()
     KDT:CreateTeleportElements(KDT.MainFrame)
     KDT:CreateTimerElements(KDT.MainFrame)
     KDT:CreateBlacklistElements(KDT.MainFrame)
+    KDT:SetupBisTab(KDT.MainFrame)
     KDT:SetupTabSwitching(KDT.MainFrame)
     KDT:SetupGroupRefresh(KDT.MainFrame)
     KDT:SetupBlacklistRefresh(KDT.MainFrame)
     KDT:SetupTeleportRefresh(KDT.MainFrame)
     KDT:SetupTimerRefresh(KDT.MainFrame)
+    KDT:SetupBisRefresh(KDT.MainFrame)
     
     -- Initially hide all elements except group
     for _, el in pairs(KDT.MainFrame.blacklistElements) do
@@ -44,6 +46,9 @@ EventUtil.ContinueOnAddOnLoaded(addonName, function()
         if el.Hide then el:Hide() end
     end
     for _, el in pairs(KDT.MainFrame.timerElements) do
+        if el.Hide then el:Hide() end
+    end
+    for _, el in pairs(KDT.MainFrame.bisElements) do
         if el.Hide then el:Hide() end
     end
     

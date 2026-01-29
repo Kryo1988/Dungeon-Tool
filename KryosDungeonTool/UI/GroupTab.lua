@@ -38,12 +38,7 @@ function KDT:CreateGroupElements(f)
     e.stackText = e.box:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     e.stackText:SetPoint("TOPLEFT", 10, -78)
     
-    e.keyText = e.box:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    e.keyText:SetPoint("TOPLEFT", 10, -94)
-    e.keyText:SetWidth(320)
-    e.keyText:SetJustifyH("LEFT")
-    
-    -- Buttons
+    -- Buttons (created first so keyText can anchor to them)
     e.readyBtn = self:CreateButton(e.box, "Ready Check", 95, 22)
     e.readyBtn:SetPoint("TOPRIGHT", -110, -20)
     e.readyBtn:SetBackdropColor(0.15, 0.45, 0.15, 1)
@@ -66,6 +61,12 @@ function KDT:CreateGroupElements(f)
     e.cdBtn:SetScript("OnClick", function() KDT:StartCountdown() end)
     e.cdBtn:SetScript("OnEnter", function(self) self:SetBackdropColor(0.6, 0.45, 0.15, 1) end)
     e.cdBtn:SetScript("OnLeave", function(self) self:SetBackdropColor(0.5, 0.35, 0.1, 1) end)
+    
+    -- Key text (now that readyBtn exists, we can anchor to it)
+    e.keyText = e.box:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    e.keyText:SetPoint("TOPLEFT", 10, -94)
+    e.keyText:SetPoint("RIGHT", e.readyBtn, "LEFT", -10, 0)
+    e.keyText:SetJustifyH("LEFT")
     
     e.secLabel = e.box:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     e.secLabel:SetPoint("TOP", e.cdBtn, "BOTTOM", -12, -5)
@@ -228,16 +229,15 @@ function KDT:SetupGroupRefresh(f)
         
         -- Create member rows directly in container
         local yOffset = 0
-        local containerWidth = e.memberContainer:GetWidth()
-        if not containerWidth or containerWidth < 100 then containerWidth = 640 end
         
         -- Make sure container is shown
         e.memberContainer:Show()
         
         for i, m in ipairs(members) do
             local row = CreateFrame("Frame", nil, e.memberContainer, "BackdropTemplate")
-            row:SetSize(containerWidth, 34)
+            row:SetHeight(34)
             row:SetPoint("TOPLEFT", e.memberContainer, "TOPLEFT", 0, yOffset)
+            row:SetPoint("RIGHT", e.memberContainer, "RIGHT", 0, 0)
             row:SetBackdrop({bgFile = "Interface\\Buttons\\WHITE8X8"})
             row:SetBackdropColor(i % 2 == 0 and 0.07 or 0.05, i % 2 == 0 and 0.07 or 0.05, i % 2 == 0 and 0.09 or 0.07, 0.95)
             row:SetFrameLevel(e.memberContainer:GetFrameLevel() + 1)

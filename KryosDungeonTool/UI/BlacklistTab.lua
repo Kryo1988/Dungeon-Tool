@@ -35,17 +35,9 @@ function KDT:CreateBlacklistElements(f)
     e.nameInput:SetPoint("TOPLEFT", 10, -42)
     e.nameInput:SetMaxLetters(12)
     
-    e.reasonLabel = e.box:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    e.reasonLabel:SetPoint("TOPLEFT", 155, -28)
-    e.reasonLabel:SetText("Reason")
-    e.reasonLabel:SetTextColor(0.5, 0.5, 0.5)
-    
-    e.reasonInput = self:CreateInput(e.box, 340)
-    e.reasonInput:SetPoint("TOPLEFT", 155, -42)
-    e.reasonInput:SetMaxLetters(100)
-    
+    -- Add button (anchored to right side)
     e.addBtn = self:CreateButton(e.box, "Add", 70, 22)
-    e.addBtn:SetPoint("TOPLEFT", 510, -42)
+    e.addBtn:SetPoint("TOPRIGHT", e.box, "TOPRIGHT", -10, -42)
     e.addBtn:SetBackdropColor(0.15, 0.35, 0.6, 1)
     e.addBtn:SetScript("OnClick", function()
         local n = e.nameInput:GetText()
@@ -58,6 +50,17 @@ function KDT:CreateBlacklistElements(f)
     end)
     e.addBtn:SetScript("OnEnter", function(self) self:SetBackdropColor(0.2, 0.45, 0.7, 1) end)
     e.addBtn:SetScript("OnLeave", function(self) self:SetBackdropColor(0.15, 0.35, 0.6, 1) end)
+    
+    e.reasonLabel = e.box:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    e.reasonLabel:SetPoint("TOPLEFT", 155, -28)
+    e.reasonLabel:SetText("Reason")
+    e.reasonLabel:SetTextColor(0.5, 0.5, 0.5)
+    
+    -- Reason input stretches to Add button
+    e.reasonInput = self:CreateInput(e.box, 100)
+    e.reasonInput:SetPoint("TOPLEFT", 155, -42)
+    e.reasonInput:SetPoint("RIGHT", e.addBtn, "LEFT", -10, 0)
+    e.reasonInput:SetMaxLetters(100)
     
     e.nameInput:SetScript("OnEnterPressed", function() e.reasonInput:SetFocus() end)
     e.reasonInput:SetScript("OnEnterPressed", function() e.addBtn:Click() end)
@@ -73,7 +76,8 @@ function KDT:CreateBlacklistElements(f)
     e.scroll:SetPoint("BOTTOMRIGHT", c, "BOTTOMRIGHT", -28, 45)
     
     e.scrollChild = CreateFrame("Frame", nil, e.scroll)
-    e.scrollChild:SetSize(640, 1)
+    e.scrollChild:SetHeight(1)
+    -- Width will be set dynamically in RefreshBlacklist
     e.scroll:SetScrollChild(e.scrollChild)
     
     -- Bottom Buttons
@@ -135,11 +139,16 @@ function KDT:SetupBlacklistRefresh(f)
         end
         table.sort(sorted, function(a, b) return a.name < b.name end)
         
+        -- Set scrollChild width dynamically
+        local scrollWidth = e.scroll:GetWidth() or 600
+        e.scrollChild:SetWidth(scrollWidth - 5)
+        
         local yOffset = 0
         for _, entry in ipairs(sorted) do
             local row = CreateFrame("Frame", nil, e.scrollChild, "BackdropTemplate")
-            row:SetSize(640, 42)
+            row:SetHeight(42)
             row:SetPoint("TOPLEFT", e.scrollChild, "TOPLEFT", 0, yOffset)
+            row:SetPoint("RIGHT", e.scrollChild, "RIGHT", 0, 0)
             row:SetBackdrop({bgFile = "Interface\\Buttons\\WHITE8X8"})
             row:SetBackdropColor(0.07, 0.07, 0.09, 0.95)
             
@@ -149,7 +158,7 @@ function KDT:SetupBlacklistRefresh(f)
             
             local reason = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
             reason:SetPoint("TOPLEFT", 10, -24)
-            reason:SetWidth(450)
+            reason:SetPoint("RIGHT", row, "RIGHT", -140, 0)
             reason:SetJustifyH("LEFT")
             reason:SetText(entry.data.reason or "No reason")
             reason:SetTextColor(0.5, 0.5, 0.5)

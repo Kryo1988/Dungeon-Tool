@@ -195,20 +195,35 @@ SlashCmdList["KDT"] = function(msg)
         KDT:Print("Testing blacklist warning dialog...")
         KDT:ShowBlacklistWarningDialog("TestPlayer", "This is a test reason")
         
+    elseif cmd == "bis" then
+        -- Open BiS tab
+        if KDT.MainFrame then
+            KDT.MainFrame:Show()
+            KDT.MainFrame:SwitchTab("bis")
+        end
+        
+    elseif cmd == "resetbis" then
+        -- Reset all custom BiS for current spec
+        local specID = KDT:GetPlayerSpecID()
+        KDT:ResetAllCustomBis(specID)
+        KDT:Print("BiS data reset for " .. KDT:GetSpecName(specID))
+        if KDT.MainFrame and KDT.MainFrame.RefreshBis then
+            KDT.MainFrame:RefreshBis()
+        end
+        
     elseif cmd == "help" then
         KDT:Print("Commands:")
         KDT:Print("  /kdt - Open Group Check")
         KDT:Print("  /kdt bl - Open Blacklist")
         KDT:Print("  /kdt tp - Open Teleports")
         KDT:Print("  /kdt timer - Open Timer settings")
+        KDT:Print("  /kdt bis - Open BiS Gear tab (Right-click to edit)")
+        KDT:Print("  /kdt resetbis - Reset BiS data for current spec")
         KDT:Print("  /kdt history - Show run history")
-        KDT:Print("  /kdt saverun - Manually save current run")
         KDT:Print("  /kdt cd - Start countdown")
         KDT:Print("  /kdt ready - Ready check")
         KDT:Print("  /kdt post - Post group to chat")
         KDT:Print("  /kdt share - Share blacklist")
-        KDT:Print("  /kdt debug - Debug keystone MapIDs")
-        KDT:Print("  /kdt debugtimer - Debug timer/forces info")
         
     else
         KDT:Print("Unknown command. Type /kdt help")
