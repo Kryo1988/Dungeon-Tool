@@ -412,12 +412,41 @@ function KDT:GetGroupMembers()
             local keyData = self:GetUnitKeystone(unit)
             local role = specData and specData.role or UnitGroupRolesAssigned(unit)
             
+            -- Get item level
+            local ilvl = nil
+            if UnitIsUnit(unit, "player") then
+                local _, equipped = GetAverageItemLevel()
+                ilvl = equipped and math.floor(equipped) or nil
+            else
+                -- Try to get from inspect cache
+                local guid = UnitGUID(unit)
+                local guidKey = guid and tostring(guid) or nil
+                if guidKey and self.itemLevelCache and self.itemLevelCache[guidKey] then
+                    ilvl = self.itemLevelCache[guidKey]
+                end
+            end
+            
+            -- Get RIO score (if RaiderIO addon is installed)
+            local rio = nil
+            if RaiderIO and RaiderIO.GetProfile then
+                local unitName, unitRealm = UnitName(unit)
+                if not unitRealm or unitRealm == "" then
+                    unitRealm = GetRealmName()
+                end
+                local profile = RaiderIO.GetProfile(unitName, unitRealm)
+                if profile and profile.mythicKeystoneProfile then
+                    rio = profile.mythicKeystoneProfile.currentScore
+                end
+            end
+            
             local member = {
                 unit = unit,
                 name = name,
                 class = class,
                 spec = specData and specData.specName or nil,
                 role = role,
+                ilvl = ilvl,
+                rio = rio,
                 keystone = nil,
             }
             

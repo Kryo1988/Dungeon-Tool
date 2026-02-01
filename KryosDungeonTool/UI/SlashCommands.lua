@@ -295,6 +295,59 @@ SlashCmdList["KDT"] = function(msg)
             KDT.MainFrame:RefreshBis()
         end
         
+    elseif cmd == "debugbis" then
+        -- Debug BiS data
+        KDT:Print("=== BiS Debug ===")
+        local specID = KDT:GetPlayerSpecID()
+        local _, playerClass = UnitClass("player")
+        local specName = KDT:GetSpecName(specID)
+        
+        KDT:Print("Player Class: " .. tostring(playerClass))
+        KDT:Print("Spec ID: " .. tostring(specID))
+        KDT:Print("Spec Name: " .. tostring(specName))
+        
+        -- Check if BIS_DATA has entry for this specID
+        KDT:Print("--- Data Sources ---")
+        KDT:Print("BIS_DATA[" .. specID .. "] exists: " .. tostring(KDT.BIS_DATA[specID] ~= nil))
+        
+        -- Check custom data
+        local hasCustom = KryosDungeonToolDB and KryosDungeonToolDB.customBis and KryosDungeonToolDB.customBis[specID]
+        KDT:Print("CustomBis[" .. specID .. "] exists: " .. tostring(hasCustom ~= nil))
+        
+        -- Show first item from BIS_DATA
+        if KDT.BIS_DATA[specID] then
+            local headItem = KDT.BIS_DATA[specID].HEAD
+            if headItem then
+                KDT:Print("BIS_DATA HEAD: " .. (headItem.name or "?") .. " (ID: " .. (headItem.itemID or 0) .. ")")
+            end
+        end
+        
+        -- Show what GetBisForSpec returns
+        local bisData = KDT:GetBisForSpec(specID)
+        if bisData and bisData.HEAD then
+            KDT:Print("GetBisForSpec HEAD: " .. (bisData.HEAD.name or "?") .. " (ID: " .. (bisData.HEAD.itemID or 0) .. ")")
+        end
+        
+        -- List all available specIDs in BIS_DATA
+        KDT:Print("--- Available Spec IDs in BIS_DATA ---")
+        local specIDs = {}
+        for sid, _ in pairs(KDT.BIS_DATA) do
+            table.insert(specIDs, sid)
+        end
+        table.sort(specIDs)
+        local specStr = table.concat(specIDs, ", ")
+        KDT:Print(specStr)
+        
+    elseif cmd == "clearbis" then
+        -- Clear all custom BiS data for all specs
+        if KryosDungeonToolDB then
+            KryosDungeonToolDB.customBis = nil
+        end
+        KDT:Print("All custom BiS data cleared.")
+        if KDT.MainFrame and KDT.MainFrame.RefreshBis then
+            KDT.MainFrame:RefreshBis()
+        end
+        
     elseif cmd == "help" then
         KDT:Print("Commands:")
         KDT:Print("  /kdt - Open Group Check")
@@ -307,7 +360,6 @@ SlashCmdList["KDT"] = function(msg)
         KDT:Print("  /kdt cd - Start countdown")
         KDT:Print("  /kdt ready - Ready check")
         KDT:Print("  /kdt post - Post group to chat")
-        KDT:Print("  /kdt share - Share blacklist")
         
     else
         KDT:Print("Unknown command. Type /kdt help")

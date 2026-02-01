@@ -1,5 +1,7 @@
 -- Kryos Dungeon Tool
--- Modules/Timer.lua - External M+ Timer (Complete Rewrite)
+-- Modules/Timer.lua - External M+ Timer (v1.8.10)
+-- Fixes: Blizzard timer only hidden in M+, no empty space, dungeon name display, 
+--        customizable colors, completion time preservation
 
 local addonName, KDT = ...
 
@@ -21,27 +23,42 @@ KDT.timerState = {
     completed = false,
     completedTime = 0,
     inInstance = false,
+    inMythicPlus = false, -- Track M+ state specifically
 }
 
--- Default colors
+-- Default colors (all customizable)
 local defaultColors = {
+    -- Timer text colors
     timerNormal = {1, 1, 1, 1},
     timerPlus3 = {0, 1, 0, 1},
     timerPlus2 = {1, 1, 0, 1},
     timerPlus1 = {1, 0.5, 0, 1},
     timerFail = {1, 0, 0, 1},
+    -- Header colors
+    dungeonName = {1, 0.82, 0, 1}, -- Gold
+    keyLevel = {0.5, 1, 0.5, 1}, -- Light green
+    -- Deaths
     deaths = {1, 1, 1, 1},
+    -- Forces
     forcesIncomplete = {1, 0.8, 0, 1},
     forcesComplete = {0, 1, 0, 1},
+    forcesBar = {1, 0.8, 0, 1},
+    forcesBarComplete = {0, 1, 0, 1},
+    -- Boss
     bossIncomplete = {0.6, 0.6, 0.6, 1},
     bossComplete = {0, 1, 0, 1},
+    -- Splits
     splitAhead = {0, 1, 0, 1},
     splitBehind = {1, 0, 0, 1},
+    -- Bars
     barPlus3 = {0, 0.8, 0, 1},
     barPlus2 = {1, 1, 0, 1},
     barPlus1 = {1, 0.5, 0, 1},
-    barBackground = {0.2, 0.2, 0.2, 1},
-    forcesBar = {1, 0.8, 0, 1},
+    barBackground = {0.15, 0.15, 0.15, 1},
+    -- Split times text
+    splitTimePlus3 = {0, 1, 0, 1},
+    splitTimePlus2 = {1, 1, 0, 1},
+    splitTimePlus1 = {1, 0.5, 0, 1},
 }
 
 -- ==================== FORMAT TIME ====================
@@ -68,17 +85,23 @@ function KDT:FormatTime(seconds, showSign)
     return negative and "-" .. str or str
 end
 
+-- ==================== GET COLOR ====================
+function KDT:GetTimerColor(colorName)
+    local db = self.DB and self.DB.timer
+    local colors = db and db.colors or {}
+    return colors[colorName] or defaultColors[colorName] or {1, 1, 1, 1}
+end
+
 -- ==================== CREATE EXTERNAL TIMER ====================
 function KDT:CreateExternalTimer()
     if self.ExternalTimer then return self.ExternalTimer end
     
     local WIDTH = 280
     local db = self.DB.timer
-    local colors = db.colors or defaultColors
     
-    -- Main frame (transparent - no background)
+    -- Main frame (transparent)
     local f = CreateFrame("Frame", "KryosExternalTimer", UIParent)
-    f:SetSize(WIDTH, 200)
+    f:SetSize(WIDTH, 220)
     f:SetPoint("RIGHT", UIParent, "RIGHT", -50, 100)
     f:SetMovable(true)
     f:SetClampedToScreen(true)
@@ -98,15 +121,40 @@ function KDT:CreateExternalTimer()
         KDT.DB.timer.position = {point = point, relPoint = relPoint, x = x, y = y}
     end)
     
-    -- Right click menu
-    f:SetScript("OnMouseDown", function(self, button)
-        if button == "RightButton" then
-            KDT:ShowTimerContextMenu(self)
-        end
-    end)
-    
     local yOffset = -5
     local font = db.font or "Fonts\\FRIZQT__.TTF"
+    
+    -- ==================== OPTIONS BUTTON (top right corner) ====================
+    f.optionsBtn = CreateFrame("Button", nil, f)
+    f.optionsBtn:SetSize(20, 20)
+    f.optionsBtn:SetPoint("TOPRIGHT", 0, 0)
+    f.optionsBtn:SetNormalTexture("Interface\\Buttons\\UI-OptionsButton")
+    f.optionsBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+    f.optionsBtn:SetScript("OnClick", function(self, button)
+        -- Direct open Timer Settings on left click
+        KDT:ShowTimerSettings()
+    end)
+    f.optionsBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:AddLine("Timer Settings", 1, 0.82, 0)
+        GameTooltip:AddLine("Click to open settings", 0.7, 0.7, 0.7)
+        GameTooltip:Show()
+    end)
+    f.optionsBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    
+    -- ==================== ROW 0: Dungeon Name & Key Level ====================
+    f.headerFrame = CreateFrame("Frame", nil, f)
+    f.headerFrame:SetSize(WIDTH - 25, 22) -- Leave space for options button
+    f.headerFrame:SetPoint("TOP", -10, yOffset)
+    f.headerFrame:EnableMouse(false)
+    
+    f.dungeonText = f.headerFrame:CreateFontString(nil, "OVERLAY")
+    f.dungeonText:SetFont(font, db.headerFontSize or 14, "OUTLINE")
+    f.dungeonText:SetPoint("CENTER", 0, 0)
+    f.dungeonText:SetText("")
+    f.dungeonText:SetTextColor(unpack(self:GetTimerColor("dungeonName")))
+    
+    yOffset = yOffset - 22
     
     -- ==================== ROW 1: Main Timer ====================
     f.timerText = f:CreateFontString(nil, "OVERLAY")
@@ -117,7 +165,7 @@ function KDT:CreateExternalTimer()
     -- Death counter with tooltip
     f.deathFrame = CreateFrame("Frame", nil, f)
     f.deathFrame:SetSize(40, 25)
-    f.deathFrame:SetPoint("TOPRIGHT", -5, yOffset)
+    f.deathFrame:SetPoint("TOPRIGHT", -25, yOffset) -- Leave space for options button
     
     f.deathText = f.deathFrame:CreateFontString(nil, "OVERLAY")
     f.deathText:SetFont(font, db.deathFontSize or 16, "OUTLINE")
@@ -152,6 +200,7 @@ function KDT:CreateExternalTimer()
     f.splitBars = CreateFrame("Frame", nil, f)
     f.splitBars:SetSize(WIDTH - 16, barHeight + 20)
     f.splitBars:SetPoint("TOP", 0, yOffset)
+    f.splitBars:EnableMouse(false) -- Let clicks pass through
     
     -- +3 Bar
     f.bar3Bg = f.splitBars:CreateTexture(nil, "BACKGROUND")
@@ -167,7 +216,7 @@ function KDT:CreateExternalTimer()
     f.time3 = f.splitBars:CreateFontString(nil, "OVERLAY")
     f.time3:SetFont(font, 11, "OUTLINE")
     f.time3:SetPoint("TOP", f.bar3Bg, "BOTTOM", 0, -2)
-    f.time3:SetTextColor(0, 1, 0, 1)
+    f.time3:SetTextColor(unpack(self:GetTimerColor("splitTimePlus3")))
     
     -- +2 Bar
     f.bar2Bg = f.splitBars:CreateTexture(nil, "BACKGROUND")
@@ -183,7 +232,7 @@ function KDT:CreateExternalTimer()
     f.time2 = f.splitBars:CreateFontString(nil, "OVERLAY")
     f.time2:SetFont(font, 11, "OUTLINE")
     f.time2:SetPoint("TOP", f.bar2Bg, "BOTTOM", 0, -2)
-    f.time2:SetTextColor(1, 1, 0, 1)
+    f.time2:SetTextColor(unpack(self:GetTimerColor("splitTimePlus2")))
     
     -- +1 Bar
     f.bar1Bg = f.splitBars:CreateTexture(nil, "BACKGROUND")
@@ -199,7 +248,7 @@ function KDT:CreateExternalTimer()
     f.time1 = f.splitBars:CreateFontString(nil, "OVERLAY")
     f.time1:SetFont(font, 11, "OUTLINE")
     f.time1:SetPoint("TOP", f.bar1Bg, "BOTTOM", 0, -2)
-    f.time1:SetTextColor(1, 0.5, 0, 1)
+    f.time1:SetTextColor(unpack(self:GetTimerColor("splitTimePlus1")))
     
     yOffset = yOffset - 35
     
@@ -207,6 +256,7 @@ function KDT:CreateExternalTimer()
     f.forcesRow = CreateFrame("Frame", nil, f)
     f.forcesRow:SetSize(WIDTH - 16, 40)
     f.forcesRow:SetPoint("TOP", 0, yOffset)
+    f.forcesRow:EnableMouse(false) -- Let clicks pass through
     
     f.forcesText = f.forcesRow:CreateFontString(nil, "OVERLAY")
     f.forcesText:SetFont(font, 12, "OUTLINE")
@@ -229,12 +279,14 @@ function KDT:CreateExternalTimer()
     f.bossContainer = CreateFrame("Frame", nil, f)
     f.bossContainer:SetSize(WIDTH - 16, 120)
     f.bossContainer:SetPoint("TOP", 0, yOffset)
+    f.bossContainer:EnableMouse(false) -- Let clicks pass through
     
     f.bossFrames = {}
     for i = 1, 8 do
         local bf = CreateFrame("Frame", nil, f.bossContainer)
         bf:SetSize(WIDTH - 16, 16)
         bf:SetPoint("TOPRIGHT", 0, -(i-1) * 17)
+        bf:EnableMouse(false) -- Let clicks pass through
         
         -- Split time (left)
         bf.splitTime = bf:CreateFontString(nil, "OVERLAY")
@@ -281,24 +333,19 @@ function KDT:UpdateExternalTimer()
     
     local state = self.timerState
     local db = self.DB.timer
-    local colors = db.colors or defaultColors
     
     -- Check if we're actually in M+ (via API)
     local inMythicPlus = C_ChallengeMode and C_ChallengeMode.IsChallengeModeActive and C_ChallengeMode.IsChallengeModeActive()
+    state.inMythicPlus = inMythicPlus
     
     -- Show/Hide logic:
-    -- 1. If enabled AND in M+ -> ALWAYS show
-    -- 2. If enabled AND showWhenInactive AND NOT in M+ -> show (for positioning/testing)
     local shouldShow = false
     if db.enabled then
         if inMythicPlus or state.active then
-            -- Always show in M+
             shouldShow = true
         elseif state.completed and state.inInstance then
-            -- Keep showing after completion until leaving instance
             shouldShow = true
         elseif db.showWhenInactive then
-            -- Show outside M+ for positioning/testing
             shouldShow = true
         end
     end
@@ -310,15 +357,24 @@ function KDT:UpdateExternalTimer()
     
     f:Show()
     
-    -- Get times - fetch directly from API if in M+ and state not yet initialized
+    -- Get times - use completion time if completed, otherwise live data
     local elapsed = 0
     local timeLimit = 1
     local deaths = 0
     local dungeonName = "Unknown"
     local level = 0
     local forcesPercent = 0
+    local isPreviewMode = false
     
-    if inMythicPlus then
+    -- CRITICAL: If completed, ALWAYS use the saved completion time
+    if state.completed and state.completedTime > 0 then
+        elapsed = state.completedTime
+        timeLimit = state.timeLimit or 1
+        deaths = state.deaths or 0
+        dungeonName = state.dungeonName or "Completed"
+        level = state.level or 0
+        forcesPercent = state.forcesPercent or 100
+    elseif inMythicPlus then
         -- Get data directly from API
         local mapID = C_ChallengeMode.GetActiveChallengeMapID()
         local keystoneLevel = C_ChallengeMode.GetActiveKeystoneInfo()
@@ -349,16 +405,6 @@ function KDT:UpdateExternalTimer()
             deaths = deathCount
         end
         
-        -- Update state if not yet set
-        if not state.active and elapsed > 0 then
-            state.active = true
-            state.elapsed = elapsed
-            state.timeLimit = timeLimit
-            state.dungeonName = dungeonName
-            state.level = level
-            state.deaths = deaths
-        end
-        
         -- Get forces from scenario info
         local numCriteria = 0
         if C_Scenario and C_Scenario.GetStepInfo then
@@ -369,60 +415,108 @@ function KDT:UpdateExternalTimer()
         for i = 1, numCriteria do
             local criteriaInfo = C_ScenarioInfo and C_ScenarioInfo.GetCriteriaInfo(i)
             if criteriaInfo then
-                -- Check if this is the enemy forces criteria
                 if criteriaInfo.isWeightedProgress then
                     local current = criteriaInfo.quantity or 0
                     local total = criteriaInfo.totalQuantity or 1
-                    if total > 0 then
-                        forcesPercent = (current / total) * 100
-                    end
+                    
+                    -- TWW API FIX: For weighted progress, quantity IS the percentage (0-100)
+                    -- NOT the absolute count! So quantity=100 means 100% complete.
+                    forcesPercent = current  -- current is already the percentage!
+                    
+                    -- Calculate actual count for display
+                    local actualCount = math.floor((current / 100) * total)
+                    state.forcesCurrent = actualCount
+                    state.forcesTotal = total
                     break
                 end
             end
         end
+        
+        -- Update state values
+        state.elapsed = elapsed
+        state.timeLimit = timeLimit
+        state.dungeonName = dungeonName
+        state.level = level
+        state.deaths = deaths
+        state.forcesPercent = forcesPercent
+    elseif state.active then
+        elapsed = state.elapsed or 0
+        timeLimit = state.timeLimit or 1
+        deaths = state.deaths or 0
+        dungeonName = state.dungeonName or "Unknown"
+        level = state.level or 0
+        forcesPercent = state.forcesPercent or 0
+    elseif db.showWhenInactive then
+        -- Preview mode with demo data for positioning
+        isPreviewMode = true
+        elapsed = 845 -- 14:05
+        timeLimit = 1800 -- 30:00
+        deaths = 2
+        dungeonName = "Preview Mode"
+        level = 12
+        forcesPercent = 72.5
+        -- Create demo boss data
+        state.bosses = {
+            {name = "First Boss", killed = true, killTime = 185},
+            {name = "Second Boss", killed = true, killTime = 412},
+            {name = "Third Boss", killed = false, killTime = nil},
+            {name = "Final Boss", killed = false, killTime = nil},
+        }
+        state.forcesCurrent = 580
+        state.forcesTotal = 800
     end
     
-    -- Use state values if available (they may be more up-to-date)
-    if state.active then
-        elapsed = state.completed and state.completedTime or (state.elapsed or elapsed)
-        timeLimit = state.timeLimit or timeLimit
-        -- Don't use "or" for deaths because 0 is a valid value
-        if state.deaths ~= nil then deaths = state.deaths end
-        forcesPercent = state.forcesPercent or forcesPercent
-    end
-    
-    -- Always get deaths from API when in M+ (most reliable source)
-    if inMythicPlus then
-        local apiDeaths = C_ChallengeMode.GetDeathCount()
-        if apiDeaths and apiDeaths > 0 then
-            deaths = apiDeaths
-            state.deaths = apiDeaths -- Update state too
-        end
-    end
-    
-    -- Ensure timeLimit is never 0 to avoid division issues
     if timeLimit <= 0 then timeLimit = 1 end
     
     local plus3Time = timeLimit * 0.6
     local plus2Time = timeLimit * 0.8
     local plus1Time = timeLimit
     
+    -- ==================== Dungeon Header ====================
+    if isPreviewMode then
+        -- Show preview mode indicator
+        f.dungeonText:SetText("|cFFFF8800[PREVIEW]|r " .. string.format("|cFF80FF80+%d|r %s", level, dungeonName))
+        f.dungeonText:SetTextColor(unpack(self:GetTimerColor("dungeonName")))
+        f.headerFrame:Show()
+    elseif dungeonName and dungeonName ~= "" and dungeonName ~= "Unknown" then
+        local headerText = dungeonName
+        if level and level > 0 then
+            headerText = string.format("|cFF80FF80+%d|r %s", level, dungeonName)
+        end
+        f.dungeonText:SetText(headerText)
+        f.dungeonText:SetTextColor(unpack(self:GetTimerColor("dungeonName")))
+        f.headerFrame:Show()
+    else
+        f.dungeonText:SetText("")
+        f.headerFrame:Hide()
+    end
+    
     -- ==================== Main Timer ====================
     f.timerText:SetText(self:FormatTime(elapsed) .. " / " .. self:FormatTime(timeLimit))
     
-    if elapsed < plus3Time then
-        f.timerText:SetTextColor(unpack(colors.timerPlus3 or defaultColors.timerPlus3))
+    if state.completed then
+        if elapsed <= plus3Time then
+            f.timerText:SetTextColor(unpack(self:GetTimerColor("timerPlus3")))
+        elseif elapsed <= plus2Time then
+            f.timerText:SetTextColor(unpack(self:GetTimerColor("timerPlus2")))
+        elseif elapsed <= plus1Time then
+            f.timerText:SetTextColor(unpack(self:GetTimerColor("timerPlus1")))
+        else
+            f.timerText:SetTextColor(unpack(self:GetTimerColor("timerFail")))
+        end
+    elseif elapsed < plus3Time then
+        f.timerText:SetTextColor(unpack(self:GetTimerColor("timerPlus3")))
     elseif elapsed < plus2Time then
-        f.timerText:SetTextColor(unpack(colors.timerPlus2 or defaultColors.timerPlus2))
+        f.timerText:SetTextColor(unpack(self:GetTimerColor("timerPlus2")))
     elseif elapsed < plus1Time then
-        f.timerText:SetTextColor(unpack(colors.timerPlus1 or defaultColors.timerPlus1))
+        f.timerText:SetTextColor(unpack(self:GetTimerColor("timerPlus1")))
     else
-        f.timerText:SetTextColor(unpack(colors.timerFail or defaultColors.timerFail))
+        f.timerText:SetTextColor(unpack(self:GetTimerColor("timerFail")))
     end
     
     -- ==================== Deaths ====================
     f.deathText:SetText("[" .. (deaths or 0) .. "]")
-    f.deathText:SetTextColor(unpack(colors.deaths or defaultColors.deaths))
+    f.deathText:SetTextColor(unpack(self:GetTimerColor("deaths")))
     
     -- ==================== Split Bars ====================
     local barWidth = f.bar3Bg:GetWidth()
@@ -431,11 +525,15 @@ function KDT:UpdateExternalTimer()
     f.time2:SetText(self:FormatTime(plus2Time))
     f.time1:SetText(self:FormatTime(plus1Time))
     
+    f.time3:SetTextColor(unpack(self:GetTimerColor("splitTimePlus3")))
+    f.time2:SetTextColor(unpack(self:GetTimerColor("splitTimePlus2")))
+    f.time1:SetTextColor(unpack(self:GetTimerColor("splitTimePlus1")))
+    
     -- +3 Bar
     if elapsed < plus3Time then
         local progress = elapsed / plus3Time
         f.bar3:SetWidth(math.max(1, barWidth * progress))
-        f.bar3:SetColorTexture(unpack(colors.barPlus3 or defaultColors.barPlus3))
+        f.bar3:SetColorTexture(unpack(self:GetTimerColor("barPlus3")))
     else
         f.bar3:SetWidth(barWidth)
         f.bar3:SetColorTexture(0.3, 0.5, 0.3, 1)
@@ -447,7 +545,7 @@ function KDT:UpdateExternalTimer()
     elseif elapsed < plus2Time then
         local progress = (elapsed - plus3Time) / (plus2Time - plus3Time)
         f.bar2:SetWidth(math.max(1, barWidth * progress))
-        f.bar2:SetColorTexture(unpack(colors.barPlus2 or defaultColors.barPlus2))
+        f.bar2:SetColorTexture(unpack(self:GetTimerColor("barPlus2")))
     else
         f.bar2:SetWidth(barWidth)
         f.bar2:SetColorTexture(0.5, 0.5, 0.3, 1)
@@ -459,316 +557,561 @@ function KDT:UpdateExternalTimer()
     elseif elapsed < plus1Time then
         local progress = (elapsed - plus2Time) / (plus1Time - plus2Time)
         f.bar1:SetWidth(math.max(1, barWidth * progress))
-        f.bar1:SetColorTexture(unpack(colors.barPlus1 or defaultColors.barPlus1))
+        f.bar1:SetColorTexture(unpack(self:GetTimerColor("barPlus1")))
     else
         f.bar1:SetWidth(barWidth)
-        f.bar1:SetColorTexture(0.5, 0.3, 0.2, 1)
+        f.bar1:SetColorTexture(0.5, 0.3, 0.3, 1)
     end
     
     -- ==================== Forces ====================
-    local forcesPct = forcesPercent
-    if state.forcesPercent and state.forcesPercent > 0 then
-        forcesPct = state.forcesPercent
-    end
-    local forcesCurrent = state.forcesCurrent or 0
-    local forcesTotal = state.forcesTotal or 0
+    local forcesPct = state.forcesPercent or forcesPercent or 0
+    local forcesComplete = forcesPct >= 100
     
-    local forcesStr = string.format("%.1f%%", forcesPct)
-    if forcesTotal > 0 then
-        forcesStr = string.format("%.1f%% (%d/%d)", forcesPct, forcesCurrent, forcesTotal)
-    end
-    f.forcesText:SetText(forcesStr)
-    
-    if forcesPct >= 100 then
-        f.forcesText:SetTextColor(unpack(colors.forcesComplete or defaultColors.forcesComplete))
-        f.forcesBar:SetColorTexture(unpack(colors.forcesComplete or defaultColors.forcesComplete))
+    if state.forcesTotal and state.forcesTotal > 0 then
+        f.forcesText:SetText(string.format("%.1f%% (%d/%d)", forcesPct, state.forcesCurrent or 0, state.forcesTotal))
     else
-        f.forcesText:SetTextColor(unpack(colors.forcesIncomplete or defaultColors.forcesIncomplete))
-        f.forcesBar:SetColorTexture(unpack(colors.forcesBar or defaultColors.forcesBar))
+        f.forcesText:SetText(string.format("%.1f%%", forcesPct))
+    end
+    
+    if forcesComplete then
+        f.forcesText:SetTextColor(unpack(self:GetTimerColor("forcesComplete")))
+        f.forcesBar:SetColorTexture(unpack(self:GetTimerColor("forcesBarComplete")))
+    else
+        f.forcesText:SetTextColor(unpack(self:GetTimerColor("forcesIncomplete")))
+        f.forcesBar:SetColorTexture(unpack(self:GetTimerColor("forcesBar")))
     end
     
     local forcesBarWidth = f.forcesBarBg:GetWidth()
-    f.forcesBar:SetWidth(math.max(1, math.min(forcesBarWidth, forcesBarWidth * (forcesPct / 100))))
+    f.forcesBar:SetWidth(math.max(1, forcesBarWidth * math.min(1, forcesPct / 100)))
     
     -- ==================== Bosses ====================
-    local bossCount = #state.bosses
+    local bosses = state.bosses or {}
     for i, bf in ipairs(f.bossFrames) do
-        if i <= bossCount then
-            local boss = state.bosses[i]
+        local boss = bosses[i]
+        if boss then
+            bf:Show()
+            bf.name:SetText(boss.name or "")
             
             if boss.killed then
-                -- Calculate expected time (evenly distributed)
-                local expectedTime = (plus2Time / bossCount) * i
-                local diff = (boss.killTime or elapsed) - expectedTime
-                
-                -- Split time
-                bf.splitTime:SetText(self:FormatTime(diff, true))
-                if diff <= 0 then
-                    bf.splitTime:SetTextColor(unpack(colors.splitAhead or defaultColors.splitAhead))
+                bf.name:SetTextColor(unpack(self:GetTimerColor("bossComplete")))
+                if boss.killTime then
+                    bf.killTime:SetText("[" .. self:FormatTime(boss.killTime) .. "]")
+                    bf.killTime:SetTextColor(unpack(self:GetTimerColor("bossComplete")))
                 else
-                    bf.splitTime:SetTextColor(unpack(colors.splitBehind or defaultColors.splitBehind))
+                    bf.killTime:SetText("")
                 end
-                
-                -- Kill time
-                bf.killTime:SetText("[" .. self:FormatTime(boss.killTime or 0) .. "]")
-                bf.killTime:SetTextColor(1, 1, 1, 1)
-                
-                -- Boss name
-                bf.name:SetText(boss.name or "Boss " .. i)
-                bf.name:SetTextColor(unpack(colors.bossComplete or defaultColors.bossComplete))
             else
-                bf.splitTime:SetText("")
+                bf.name:SetTextColor(unpack(self:GetTimerColor("bossIncomplete")))
                 bf.killTime:SetText("")
-                bf.name:SetText(boss.name or "Boss " .. i)
-                bf.name:SetTextColor(unpack(colors.bossIncomplete or defaultColors.bossIncomplete))
             end
             
-            bf:Show()
+            bf.splitTime:SetText("")
         else
             bf:Hide()
         end
     end
-    
-    -- Adjust frame height
-    local height = 115 + math.max(0, bossCount) * 17
-    f:SetHeight(height)
 end
 
--- ==================== TIMER CONTEXT MENU ====================
+-- ==================== CONTEXT MENU ====================
 function KDT:ShowTimerContextMenu(frame)
-    local menu = CreateFrame("Frame", "KryosTimerMenu", UIParent, "UIDropDownMenuTemplate")
+    -- Create dropdown frame once
+    if not self.timerDropdown then
+        self.timerDropdown = CreateFrame("Frame", "KDTTimerMenu", UIParent, "UIDropDownMenuTemplate")
+    end
     
-    local menuList = {
-        {text = "Kryos M+ Timer", isTitle = true, notCheckable = true},
-        {text = self.DB.timer.locked and "Unlock Position" or "Lock Position", notCheckable = true, func = function()
+    local menu = {
+        {text = "KDT Timer", isTitle = true, notCheckable = true},
+        {text = "Lock Position", checked = function() return self.DB.timer.locked end, func = function()
             self.DB.timer.locked = not self.DB.timer.locked
+            self:Print("Timer " .. (self.DB.timer.locked and "locked" or "unlocked"))
         end},
+        {text = "Show When Inactive", checked = function() return self.DB.timer.showWhenInactive end, func = function()
+            self.DB.timer.showWhenInactive = not self.DB.timer.showWhenInactive
+        end},
+        {text = " ", notCheckable = true, disabled = true},
+        {text = "Scale", notCheckable = true, hasArrow = true, menuList = {
+            {text = "50%", notCheckable = true, func = function() self:SetTimerScale(0.5) end},
+            {text = "75%", notCheckable = true, func = function() self:SetTimerScale(0.75) end},
+            {text = "100%", notCheckable = true, func = function() self:SetTimerScale(1.0) end},
+            {text = "125%", notCheckable = true, func = function() self:SetTimerScale(1.25) end},
+            {text = "150%", notCheckable = true, func = function() self:SetTimerScale(1.5) end},
+        }},
         {text = "Timer Settings", notCheckable = true, func = function()
             self:ShowTimerSettings()
         end},
-        {text = "", notCheckable = true, disabled = true},
+        {text = " ", notCheckable = true, disabled = true},
         {text = "Hide Timer", notCheckable = true, func = function()
             self.DB.timer.enabled = false
-            if self.ExternalTimer then
-                self.ExternalTimer:Hide()
-            end
+            self.ExternalTimer:Hide()
+            self:UpdateDefaultTimerVisibility()
+            self:Print("Timer hidden. Use /kdt timer to re-enable.")
         end},
     }
     
-    EasyMenu(menuList, menu, "cursor", 0, 0, "MENU")
+    EasyMenu(menu, self.timerDropdown, "cursor", 0, 0, "MENU")
 end
 
--- ==================== TIMER SETTINGS ====================
+-- ==================== SET TIMER SCALE ====================
+function KDT:SetTimerScale(scale)
+    self.DB.timer.scale = scale
+    if self.ExternalTimer then
+        self.ExternalTimer:SetScale(scale)
+    end
+    self:Print("Timer scale set to " .. (scale * 100) .. "%")
+end
+
+-- ==================== TIMER SETTINGS FRAME ====================
 function KDT:ShowTimerSettings()
     if self.timerSettingsFrame then
         self.timerSettingsFrame:Show()
+        self.timerSettingsFrame:Raise()
         return
     end
     
-    local f = CreateFrame("Frame", "KryosTimerSettingsFrame", UIParent, "BackdropTemplate")
-    f:SetSize(400, 500)
+    local db = self.DB.timer
+    if not db.colors then db.colors = {} end
+    
+    -- Main frame with KDT style
+    local f = CreateFrame("Frame", "KDTTimerSettings", UIParent, "BackdropTemplate")
+    f:SetSize(420, 580)
     f:SetPoint("CENTER")
-    f:SetFrameStrata("DIALOG")
     f:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8X8",
         edgeFile = "Interface\\Buttons\\WHITE8X8",
         edgeSize = 2
     })
-    f:SetBackdropColor(0.1, 0.1, 0.12, 0.98)
-    f:SetBackdropBorderColor(0.3, 0.3, 0.5, 1)
+    f:SetBackdropColor(0.06, 0.06, 0.08, 0.98)
+    f:SetBackdropBorderColor(0.3, 0.3, 0.35, 1)
     f:SetMovable(true)
     f:EnableMouse(true)
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", f.StartMoving)
     f:SetScript("OnDragStop", f.StopMovingOrSizing)
+    f:SetFrameStrata("HIGH") -- Lower strata so ColorPicker appears on top
+    f:SetFrameLevel(50)
     
-    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOP", 0, -15)
-    title:SetText("|cFFFFD100M+ Timer Settings|r")
+    -- Title bar
+    local titleBar = CreateFrame("Frame", nil, f, "BackdropTemplate")
+    titleBar:SetHeight(32)
+    titleBar:SetPoint("TOPLEFT", 0, 0)
+    titleBar:SetPoint("TOPRIGHT", 0, 0)
+    titleBar:SetBackdrop({bgFile = "Interface\\Buttons\\WHITE8X8"})
+    titleBar:SetBackdropColor(0.1, 0.1, 0.12, 1)
     
+    local title = titleBar:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    title:SetPoint("CENTER", 0, 0)
+    title:SetText("|cFFFFD100Timer Settings|r")
+    
+    -- Close button
     local closeBtn = CreateFrame("Button", nil, f)
-    closeBtn:SetSize(24, 24)
-    closeBtn:SetPoint("TOPRIGHT", -5, -5)
-    closeBtn.text = closeBtn:CreateFontString(nil, "OVERLAY")
-    closeBtn.text:SetFont("Fonts\\FRIZQT__.TTF", 18, "OUTLINE")
-    closeBtn.text:SetPoint("CENTER")
-    closeBtn.text:SetText("×")
+    closeBtn:SetSize(20, 20)
+    closeBtn:SetPoint("TOPRIGHT", -8, -6)
+    closeBtn:SetNormalTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Up")
+    closeBtn:SetHighlightTexture("Interface\\Buttons\\UI-Panel-MinimizeButton-Highlight")
     closeBtn:SetScript("OnClick", function() f:Hide() end)
     
-    -- Scroll Frame
+    -- Scroll frame
     local scrollFrame = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
-    scrollFrame:SetPoint("TOPLEFT", 10, -45)
-    scrollFrame:SetPoint("BOTTOMRIGHT", -30, 10)
+    scrollFrame:SetPoint("TOPLEFT", 10, -40)
+    scrollFrame:SetPoint("BOTTOMRIGHT", -30, 50)
     
     local content = CreateFrame("Frame", nil, scrollFrame)
-    content:SetSize(350, 600)
+    content:SetSize(370, 900)
     scrollFrame:SetScrollChild(content)
     
-    local yPos = 0
+    local yPos = -5
     
-    -- Enable checkbox
-    local enableCB = CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate")
-    enableCB:SetSize(24, 24)
-    enableCB:SetPoint("TOPLEFT", 5, yPos)
-    enableCB.Text:SetText("Enable M+ Timer")
-    enableCB:SetChecked(self.DB.timer.enabled)
-    enableCB:SetScript("OnClick", function(self) KDT.DB.timer.enabled = self:GetChecked() end)
-    yPos = yPos - 28
-    
-    -- Lock checkbox
-    local lockCB = CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate")
-    lockCB:SetSize(24, 24)
-    lockCB:SetPoint("TOPLEFT", 5, yPos)
-    lockCB.Text:SetText("Lock Position")
-    lockCB:SetChecked(self.DB.timer.locked)
-    lockCB:SetScript("OnClick", function(self) KDT.DB.timer.locked = self:GetChecked() end)
-    yPos = yPos - 28
-    
-    -- Show when inactive
-    local inactiveCB = CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate")
-    inactiveCB:SetSize(24, 24)
-    inactiveCB:SetPoint("TOPLEFT", 5, yPos)
-    inactiveCB.Text:SetText("Show when not in M+")
-    inactiveCB:SetChecked(self.DB.timer.showWhenInactive)
-    inactiveCB:SetScript("OnClick", function(self) KDT.DB.timer.showWhenInactive = self:GetChecked() end)
-    yPos = yPos - 40
-    
-    -- Scale
-    local scaleLabel = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    scaleLabel:SetPoint("TOPLEFT", 5, yPos)
-    scaleLabel:SetText("Scale: " .. string.format("%.1f", self.DB.timer.scale or 1))
-    
-    local scaleSlider = CreateFrame("Slider", nil, content, "OptionsSliderTemplate")
-    scaleSlider:SetSize(180, 16)
-    scaleSlider:SetPoint("LEFT", scaleLabel, "RIGHT", 20, 0)
-    scaleSlider:SetMinMaxValues(0.5, 2.0)
-    scaleSlider:SetValueStep(0.1)
-    scaleSlider:SetValue(self.DB.timer.scale or 1)
-    scaleSlider.Low:SetText("0.5")
-    scaleSlider.High:SetText("2.0")
-    scaleSlider:SetScript("OnValueChanged", function(self, value)
-        KDT.DB.timer.scale = value
-        scaleLabel:SetText("Scale: " .. string.format("%.1f", value))
-        if KDT.ExternalTimer then KDT.ExternalTimer:SetScale(value) end
-    end)
-    yPos = yPos - 40
-    
-    -- Font Size
-    local fontLabel = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    fontLabel:SetPoint("TOPLEFT", 5, yPos)
-    fontLabel:SetText("Timer Font Size: " .. (self.DB.timer.fontSize or 28))
-    
-    local fontSlider = CreateFrame("Slider", nil, content, "OptionsSliderTemplate")
-    fontSlider:SetSize(150, 16)
-    fontSlider:SetPoint("LEFT", fontLabel, "RIGHT", 20, 0)
-    fontSlider:SetMinMaxValues(16, 40)
-    fontSlider:SetValueStep(1)
-    fontSlider:SetValue(self.DB.timer.fontSize or 28)
-    fontSlider.Low:SetText("16")
-    fontSlider.High:SetText("40")
-    fontSlider:SetScript("OnValueChanged", function(self, value)
-        KDT.DB.timer.fontSize = value
-        fontLabel:SetText("Timer Font Size: " .. value)
-    end)
-    yPos = yPos - 50
-    
-    -- COLOR SETTINGS HEADER
-    local colorHeader = content:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    colorHeader:SetPoint("TOPLEFT", 5, yPos)
-    colorHeader:SetText("|cFFFFD100Color Settings|r")
-    yPos = yPos - 25
-    
-    -- Initialize colors if needed
-    self.DB.timer.colors = self.DB.timer.colors or {}
-    for k, v in pairs(defaultColors) do
-        if not self.DB.timer.colors[k] then
-            self.DB.timer.colors[k] = {unpack(v)}
-        end
+    -- Helper: Create section header
+    local function CreateHeader(text)
+        local headerFrame = CreateFrame("Frame", nil, content, "BackdropTemplate")
+        headerFrame:SetSize(360, 24)
+        headerFrame:SetPoint("TOPLEFT", 0, yPos)
+        headerFrame:SetBackdrop({bgFile = "Interface\\Buttons\\WHITE8X8"})
+        headerFrame:SetBackdropColor(0.15, 0.15, 0.18, 1)
+        
+        local headerText = headerFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        headerText:SetPoint("LEFT", 8, 0)
+        headerText:SetText("|cFFFFD700" .. text .. "|r")
+        
+        yPos = yPos - 30
+        return headerFrame
     end
     
-    -- Color picker function
-    local function CreateColorButton(parent, yOffset, label, colorKey)
-        local lbl = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        lbl:SetPoint("TOPLEFT", 5, yOffset)
-        lbl:SetText(label)
+    -- Helper: Create slider with immediate apply
+    local function CreateSlider(label, key, min, max, step, default, applyFunc)
+        local row = CreateFrame("Frame", nil, content)
+        row:SetSize(360, 45)
+        row:SetPoint("TOPLEFT", 5, yPos)
         
-        local btn = CreateFrame("Button", nil, parent)
-        btn:SetSize(20, 20)
-        btn:SetPoint("LEFT", lbl, "RIGHT", 10, 0)
+        local labelText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        labelText:SetPoint("TOPLEFT", 0, 0)
+        labelText:SetText(label)
         
-        local c = KDT.DB.timer.colors[colorKey] or defaultColors[colorKey]
-        btn.tex = btn:CreateTexture(nil, "ARTWORK")
-        btn.tex:SetAllPoints()
-        btn.tex:SetColorTexture(c[1], c[2], c[3], 1)
+        local valueText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        valueText:SetPoint("TOPRIGHT", 0, 0)
+        valueText:SetText(string.format("%.1f", db[key] or default))
+        valueText:SetTextColor(0.4, 0.8, 1)
         
-        btn:SetScript("OnClick", function()
-            local r, g, b = c[1], c[2], c[3]
-            ColorPickerFrame:SetColorRGB(r, g, b)
-            ColorPickerFrame.hasOpacity = false
-            ColorPickerFrame.func = function()
-                local nr, ng, nb = ColorPickerFrame:GetColorRGB()
-                KDT.DB.timer.colors[colorKey] = {nr, ng, nb, 1}
-                btn.tex:SetColorTexture(nr, ng, nb, 1)
+        local slider = CreateFrame("Slider", nil, row, "OptionsSliderTemplate")
+        slider:SetPoint("TOPLEFT", 0, -18)
+        slider:SetPoint("TOPRIGHT", 0, -18)
+        slider:SetHeight(16)
+        slider:SetMinMaxValues(min, max)
+        slider:SetValueStep(step)
+        slider:SetObeyStepOnDrag(true)
+        slider:SetValue(db[key] or default)
+        slider.Low:SetText(min)
+        slider.High:SetText(max)
+        
+        slider:SetScript("OnValueChanged", function(self, value)
+            value = math.floor(value / step + 0.5) * step -- Round to step
+            db[key] = value
+            valueText:SetText(string.format("%.1f", value))
+            -- Apply immediately
+            if applyFunc then
+                applyFunc(value)
             end
-            ColorPickerFrame:Show()
+            -- Recreate timer to apply font changes
+            if key == "fontSize" or key == "headerFontSize" or key == "deathFontSize" then
+                KDT:RecreateExternalTimer()
+            elseif key == "scale" and KDT.ExternalTimer then
+                KDT.ExternalTimer:SetScale(value)
+            end
         end)
         
-        return yOffset - 25
+        yPos = yPos - 50
+        return row
     end
     
-    yPos = CreateColorButton(content, yPos, "Timer +3:", "timerPlus3")
-    yPos = CreateColorButton(content, yPos, "Timer +2:", "timerPlus2")
-    yPos = CreateColorButton(content, yPos, "Timer +1:", "timerPlus1")
-    yPos = CreateColorButton(content, yPos, "Timer Fail:", "timerFail")
-    yPos = CreateColorButton(content, yPos, "Deaths:", "deaths")
-    yPos = CreateColorButton(content, yPos, "Forces Incomplete:", "forcesIncomplete")
-    yPos = CreateColorButton(content, yPos, "Forces Complete:", "forcesComplete")
-    yPos = CreateColorButton(content, yPos, "Boss Incomplete:", "bossIncomplete")
-    yPos = CreateColorButton(content, yPos, "Boss Complete:", "bossComplete")
-    yPos = CreateColorButton(content, yPos, "Split Ahead:", "splitAhead")
-    yPos = CreateColorButton(content, yPos, "Split Behind:", "splitBehind")
-    yPos = yPos - 20
+    -- Helper: Create color button with color picker
+    local function CreateColorRow(label, colorKey)
+        local row = CreateFrame("Frame", nil, content)
+        row:SetSize(360, 24)
+        row:SetPoint("TOPLEFT", 5, yPos)
+        
+        local labelText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        labelText:SetPoint("LEFT", 0, 0)
+        labelText:SetText(label)
+        
+        local colorBtn = CreateFrame("Button", nil, row, "BackdropTemplate")
+        colorBtn:SetSize(60, 18)
+        colorBtn:SetPoint("RIGHT", 0, 0)
+        colorBtn:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8X8",
+            edgeFile = "Interface\\Buttons\\WHITE8X8",
+            edgeSize = 1
+        })
+        colorBtn:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+        
+        local currentColor = db.colors[colorKey] or defaultColors[colorKey] or {1, 1, 1, 1}
+        colorBtn:SetBackdropColor(currentColor[1], currentColor[2], currentColor[3], currentColor[4] or 1)
+        
+        -- Color picker - opens beside settings frame
+        colorBtn:SetScript("OnClick", function()
+            local r, g, b, a = unpack(db.colors[colorKey] or defaultColors[colorKey] or {1, 1, 1, 1})
+            
+            local function OnColorChanged()
+                local newR, newG, newB
+                if ColorPickerFrame.GetColorRGB then
+                    newR, newG, newB = ColorPickerFrame:GetColorRGB()
+                else
+                    newR, newG, newB = ColorPickerFrame.Content.ColorPicker:GetColorRGB()
+                end
+                local newA = 1
+                if OpacitySliderFrame and OpacitySliderFrame:IsShown() then
+                    newA = 1 - OpacitySliderFrame:GetValue()
+                end
+                db.colors[colorKey] = {newR, newG, newB, newA}
+                colorBtn:SetBackdropColor(newR, newG, newB, newA)
+            end
+            
+            local function OnCancel()
+                db.colors[colorKey] = {r, g, b, a}
+                colorBtn:SetBackdropColor(r, g, b, a)
+            end
+            
+            -- TWW / WoW 11.0+ API
+            if ColorPickerFrame.SetupColorPickerAndShow then
+                local info = {
+                    r = r, g = g, b = b,
+                    opacity = a,
+                    hasOpacity = true,
+                    swatchFunc = OnColorChanged,
+                    opacityFunc = OnColorChanged,
+                    cancelFunc = OnCancel,
+                }
+                ColorPickerFrame:SetupColorPickerAndShow(info)
+            else
+                -- Legacy API (10.x and earlier)
+                ColorPickerFrame.hasOpacity = true
+                ColorPickerFrame.opacity = 1 - a
+                ColorPickerFrame.previousValues = {r, g, b, a}
+                ColorPickerFrame.func = OnColorChanged
+                ColorPickerFrame.opacityFunc = OnColorChanged
+                ColorPickerFrame.cancelFunc = OnCancel
+                ColorPickerFrame:SetColorRGB(r, g, b)
+                ColorPickerFrame:Hide()
+                ColorPickerFrame:Show()
+            end
+            
+            -- Position color picker to the RIGHT of settings frame
+            ColorPickerFrame:ClearAllPoints()
+            ColorPickerFrame:SetPoint("LEFT", f, "RIGHT", 10, 0)
+        end)
+        
+        -- Hover effect
+        colorBtn:SetScript("OnEnter", function(self)
+            self:SetBackdropBorderColor(1, 0.82, 0, 1)
+        end)
+        colorBtn:SetScript("OnLeave", function(self)
+            self:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+        end)
+        
+        yPos = yPos - 26
+        return row
+    end
     
-    -- Reset buttons
-    local resetPosBtn = self:CreateButton(content, "Reset Position", 100, 24)
-    resetPosBtn:SetPoint("TOPLEFT", 5, yPos)
+    -- Helper: Create checkbox
+    local function CreateCheckbox(label, key)
+        local cb = CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate")
+        cb:SetSize(24, 24)
+        cb:SetPoint("TOPLEFT", 5, yPos)
+        cb.Text:SetText(label)
+        cb.Text:SetFontObject("GameFontHighlight")
+        cb:SetChecked(db[key])
+        cb:SetScript("OnClick", function(self)
+            db[key] = self:GetChecked()
+        end)
+        
+        yPos = yPos - 28
+        return cb
+    end
+    
+    -- ==================== BUILD SETTINGS ====================
+    
+    -- General Settings
+    CreateHeader("General Settings")
+    CreateCheckbox("Lock Timer Position", "locked")
+    CreateCheckbox("Show Timer Outside M+ (Preview)", "showWhenInactive")
+    CreateSlider("Timer Scale", "scale", 0.5, 2.0, 0.05, 1.0)
+    CreateSlider("Timer Font Size", "fontSize", 14, 40, 1, 28)
+    CreateSlider("Header Font Size", "headerFontSize", 8, 20, 1, 14)
+    CreateSlider("Death Font Size", "deathFontSize", 8, 20, 1, 16)
+    
+    yPos = yPos - 5
+    
+    -- Timer Text Colors
+    CreateHeader("Timer Text Colors")
+    CreateColorRow("+3 Time (ahead)", "timerPlus3")
+    CreateColorRow("+2 Time", "timerPlus2")
+    CreateColorRow("+1 Time", "timerPlus1")
+    CreateColorRow("Over Time (failed)", "timerFail")
+    
+    yPos = yPos - 5
+    
+    -- Progress Bar Colors
+    CreateHeader("Progress Bar Colors")
+    CreateColorRow("+3 Bar", "barPlus3")
+    CreateColorRow("+2 Bar", "barPlus2")
+    CreateColorRow("+1 Bar", "barPlus1")
+    
+    yPos = yPos - 5
+    
+    -- Forces Colors
+    CreateHeader("Forces Colors")
+    CreateColorRow("Forces Incomplete", "forcesIncomplete")
+    CreateColorRow("Forces Complete", "forcesComplete")
+    CreateColorRow("Forces Bar", "forcesBar")
+    
+    yPos = yPos - 5
+    
+    -- Boss Colors
+    CreateHeader("Boss Colors")
+    CreateColorRow("Boss Incomplete", "bossIncomplete")
+    CreateColorRow("Boss Complete", "bossComplete")
+    
+    yPos = yPos - 5
+    
+    -- Other Colors
+    CreateHeader("Other Colors")
+    CreateColorRow("Dungeon Name", "dungeonName")
+    CreateColorRow("Death Counter", "deaths")
+    
+    -- Set content height
+    content:SetHeight(math.abs(yPos) + 20)
+    
+    -- Bottom buttons (2 rows, 2 columns)
+    local buttonFrame = CreateFrame("Frame", nil, f)
+    buttonFrame:SetHeight(65)
+    buttonFrame:SetPoint("BOTTOMLEFT", 10, 5)
+    buttonFrame:SetPoint("BOTTOMRIGHT", -10, 5)
+    
+    local btnWidth = 185
+    local btnHeight = 26
+    
+    -- Row 1: Reset Position, Reset Colors
+    local resetPosBtn = CreateFrame("Button", nil, buttonFrame, "BackdropTemplate")
+    resetPosBtn:SetSize(btnWidth, btnHeight)
+    resetPosBtn:SetPoint("TOPLEFT", 0, 0)
+    resetPosBtn:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        edgeSize = 1
+    })
+    resetPosBtn:SetBackdropColor(0.2, 0.2, 0.25, 1)
+    resetPosBtn:SetBackdropBorderColor(0.4, 0.4, 0.45, 1)
+    
+    local resetPosText = resetPosBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    resetPosText:SetPoint("CENTER")
+    resetPosText:SetText("Reset Position")
+    
     resetPosBtn:SetScript("OnClick", function()
-        KDT.DB.timer.position = nil
+        db.position = nil
         if KDT.ExternalTimer then
             KDT.ExternalTimer:ClearAllPoints()
             KDT.ExternalTimer:SetPoint("RIGHT", UIParent, "RIGHT", -50, 100)
         end
+        KDT:Print("Timer position reset.")
     end)
+    resetPosBtn:SetScript("OnEnter", function(self) self:SetBackdropColor(0.3, 0.3, 0.35, 1) end)
+    resetPosBtn:SetScript("OnLeave", function(self) self:SetBackdropColor(0.2, 0.2, 0.25, 1) end)
     
-    local resetColorsBtn = self:CreateButton(content, "Reset Colors", 100, 24)
-    resetColorsBtn:SetPoint("LEFT", resetPosBtn, "RIGHT", 10, 0)
+    local resetColorsBtn = CreateFrame("Button", nil, buttonFrame, "BackdropTemplate")
+    resetColorsBtn:SetSize(btnWidth, btnHeight)
+    resetColorsBtn:SetPoint("TOPRIGHT", 0, 0)
+    resetColorsBtn:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        edgeSize = 1
+    })
+    resetColorsBtn:SetBackdropColor(0.2, 0.2, 0.25, 1)
+    resetColorsBtn:SetBackdropBorderColor(0.4, 0.4, 0.45, 1)
+    
+    local resetColorsText = resetColorsBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    resetColorsText:SetPoint("CENTER")
+    resetColorsText:SetText("Reset Colors")
+    
     resetColorsBtn:SetScript("OnClick", function()
-        KDT.DB.timer.colors = {}
-        for k, v in pairs(defaultColors) do
-            KDT.DB.timer.colors[k] = {unpack(v)}
-        end
-        KDT:Print("Colors reset to default. Reopen settings to see changes.")
+        db.colors = {}
+        f:Hide()
+        KDT.timerSettingsFrame = nil
+        KDT:RecreateExternalTimer()
+        KDT:Print("Colors reset to defaults.")
     end)
+    resetColorsBtn:SetScript("OnEnter", function(self) self:SetBackdropColor(0.3, 0.3, 0.35, 1) end)
+    resetColorsBtn:SetScript("OnLeave", function(self) self:SetBackdropColor(0.2, 0.2, 0.25, 1) end)
     
-    content:SetHeight(math.abs(yPos) + 50)
+    -- Row 2: Reset All, Hide Timer
+    local resetAllBtn = CreateFrame("Button", nil, buttonFrame, "BackdropTemplate")
+    resetAllBtn:SetSize(btnWidth, btnHeight)
+    resetAllBtn:SetPoint("BOTTOMLEFT", 0, 0)
+    resetAllBtn:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        edgeSize = 1
+    })
+    resetAllBtn:SetBackdropColor(0.3, 0.2, 0.1, 1)
+    resetAllBtn:SetBackdropBorderColor(0.5, 0.35, 0.2, 1)
+    
+    local resetAllText = resetAllBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    resetAllText:SetPoint("CENTER")
+    resetAllText:SetText("|cFFFFAA00Reset All|r")
+    
+    resetAllBtn:SetScript("OnClick", function()
+        -- Reset ALL settings to defaults
+        db.colors = {}
+        db.position = nil
+        db.scale = 1.0
+        db.fontSize = 28
+        db.headerFontSize = 14
+        db.deathFontSize = 16
+        db.locked = false
+        db.showWhenInactive = false
+        db.enabled = true
+        
+        f:Hide()
+        KDT.timerSettingsFrame = nil
+        KDT:RecreateExternalTimer()
+        KDT:Print("All timer settings reset to defaults.")
+    end)
+    resetAllBtn:SetScript("OnEnter", function(self) self:SetBackdropColor(0.4, 0.3, 0.15, 1) end)
+    resetAllBtn:SetScript("OnLeave", function(self) self:SetBackdropColor(0.3, 0.2, 0.1, 1) end)
+    
+    local hideBtn = CreateFrame("Button", nil, buttonFrame, "BackdropTemplate")
+    hideBtn:SetSize(btnWidth, btnHeight)
+    hideBtn:SetPoint("BOTTOMRIGHT", 0, 0)
+    hideBtn:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        edgeSize = 1
+    })
+    hideBtn:SetBackdropColor(0.4, 0.15, 0.15, 1)
+    hideBtn:SetBackdropBorderColor(0.5, 0.2, 0.2, 1)
+    
+    local hideText = hideBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    hideText:SetPoint("CENTER")
+    hideText:SetText("|cFFFF6666Hide Timer|r")
+    
+    hideBtn:SetScript("OnClick", function()
+        db.enabled = false
+        if KDT.ExternalTimer then
+            KDT.ExternalTimer:Hide()
+        end
+        KDT:UpdateDefaultTimerVisibility()
+        KDT:Print("Timer hidden. Use /kdt timer to re-enable.")
+        f:Hide()
+    end)
+    hideBtn:SetScript("OnEnter", function(self) self:SetBackdropColor(0.5, 0.2, 0.2, 1) end)
+    hideBtn:SetScript("OnLeave", function(self) self:SetBackdropColor(0.4, 0.15, 0.15, 1) end)
+    
     self.timerSettingsFrame = f
+end
+
+-- ==================== RECREATE TIMER (for font changes) ====================
+function KDT:RecreateExternalTimer()
+    local wasShown = self.ExternalTimer and self.ExternalTimer:IsShown()
+    local position = self.DB.timer.position
+    
+    if self.ExternalTimer then
+        self.ExternalTimer:Hide()
+        self.ExternalTimer:SetParent(nil)
+        self.ExternalTimer = nil
+    end
+    
+    self:CreateExternalTimer()
+    
+    if position then
+        self.ExternalTimer:ClearAllPoints()
+        self.ExternalTimer:SetPoint(position.point or "RIGHT", UIParent, position.relPoint or "RIGHT", position.x or -50, position.y or 100)
+    end
+    
+    if wasShown or self.DB.timer.showWhenInactive then
+        self.ExternalTimer:Show()
+    end
 end
 
 -- ==================== UPDATE TIMER FROM GAME ====================
 function KDT:UpdateTimerFromGame()
     local state = self.timerState
     
-    -- Check instance status
     local inInstance, instanceType = IsInInstance()
     state.inInstance = inInstance and (instanceType == "party")
     
-    -- If we left the instance after completion, reset
-    if not state.inInstance and state.completed then
-        state.completed = false
-        state.completedTime = 0
-    end
-    
     local inChallenge = C_ChallengeMode.IsChallengeModeActive()
+    state.inMythicPlus = inChallenge
+    
+    -- Keep showing completion after leaving, then reset
+    if not state.inInstance and state.completed then
+        if not state.leaveTimer then
+            state.leaveTimer = GetTime()
+        elseif GetTime() - state.leaveTimer > 30 then
+            state.completed = false
+            state.completedTime = 0
+            state.leaveTimer = nil
+        end
+    else
+        state.leaveTimer = nil
+    end
     
     if inChallenge then
         local mapChallengeModeID = C_ChallengeMode.GetActiveChallengeMapID()
@@ -779,8 +1122,7 @@ function KDT:UpdateTimerFromGame()
             local _, elapsedTime = GetWorldElapsedTime(1)
             
             if elapsedTime and elapsedTime > 0 then
-                if not state.active then
-                    -- Initialize new run
+                if not state.active and not state.completed then
                     state.active = true
                     state.completed = false
                     state.completedTime = 0
@@ -794,31 +1136,30 @@ function KDT:UpdateTimerFromGame()
                     state.forcesCurrent = 0
                     state.forcesTotal = 0
                     state.forcesPercent = 0
-                    state.savedToHistory = false -- Reset save flag for new run
-                    state.saveScheduled = false -- Reset schedule flag for new run
+                    state.savedToHistory = false
+                    state.saveScheduled = false
                     
                     self:Print("M+ Timer started: " .. state.dungeonName .. " +" .. state.level)
                 end
                 
-                state.elapsed = elapsedTime
+                -- CRITICAL: Don't update elapsed if already completed
+                if not state.completed then
+                    state.elapsed = elapsedTime
+                end
                 state.timeLimit = timeLimit
                 
-                -- Update death count (always use API value as source of truth)
                 local apiDeaths, timeLost = C_ChallengeMode.GetDeathCount()
                 if apiDeaths then
                     state.deaths = apiDeaths
                 end
                 
-                -- Update scenario info
                 self:UpdateScenarioInfo()
                 
-                -- Check for completion via multiple methods (fallback if event didn't fire)
-                -- Note: The CHALLENGE_MODE_COMPLETED event should handle saving, this is just backup
+                -- Check for completion
                 if not state.completed then
                     local isComplete = false
                     local completedTime = 0
                     
-                    -- Method 1: C_ChallengeMode.GetCompletionInfo (check if exists first)
                     if C_ChallengeMode.GetCompletionInfo then
                         local mapChallenge, levelChallenge, timeChallenge = C_ChallengeMode.GetCompletionInfo()
                         if timeChallenge and timeChallenge > 0 then
@@ -827,7 +1168,6 @@ function KDT:UpdateTimerFromGame()
                         end
                     end
                     
-                    -- Method 2: C_ChallengeMode.GetChallengeCompletionInfo (WoW 12.0+)
                     if not isComplete and C_ChallengeMode.GetChallengeCompletionInfo then
                         local completionInfo = C_ChallengeMode.GetChallengeCompletionInfo()
                         if completionInfo and completionInfo.time and completionInfo.time > 0 then
@@ -836,7 +1176,6 @@ function KDT:UpdateTimerFromGame()
                         end
                     end
                     
-                    -- Method 3: C_Scenario.IsComplete
                     if not isComplete and C_Scenario and C_Scenario.IsComplete then
                         local scenarioComplete = C_Scenario.IsComplete()
                         if scenarioComplete then
@@ -845,8 +1184,7 @@ function KDT:UpdateTimerFromGame()
                         end
                     end
                     
-                    -- Method 4: Check if all bosses are killed and forces >= 99.4%
-                    if not isComplete and state.forcesPercent >= 99.4 then
+                    if not isComplete and state.forcesPercent >= 100 then
                         local allBossesKilled = true
                         local bossCount = 0
                         if state.bosses and #state.bosses > 0 then
@@ -868,8 +1206,16 @@ function KDT:UpdateTimerFromGame()
                         state.completed = true
                         state.completedTime = completedTime > 0 and completedTime or elapsedTime
                         state.active = false
-                        -- Don't save here - the event handler will do it
-                        -- If no event fires within 5 seconds, we save as backup
+                        
+                        -- Mark last boss as killed
+                        if state.bosses and #state.bosses > 0 then
+                            local lastBoss = state.bosses[#state.bosses]
+                            if lastBoss and not lastBoss.killed then
+                                lastBoss.killed = true
+                                lastBoss.killTime = state.completedTime
+                            end
+                        end
+                        
                         if not state.saveScheduled then
                             state.saveScheduled = true
                             C_Timer.After(5, function()
@@ -897,7 +1243,8 @@ end
 function KDT:UpdateScenarioInfo()
     local state = self.timerState
     
-    -- Get step info (number of criteria)
+    if state.completed then return end
+    
     local numCriteria = 0
     if C_Scenario and C_Scenario.GetStepInfo then
         local _, _, num = C_Scenario.GetStepInfo()
@@ -909,7 +1256,6 @@ function KDT:UpdateScenarioInfo()
     local oldBosses = state.bosses or {}
     state.bosses = {}
     
-    -- Process all criteria
     for i = 1, numCriteria do
         local criteriaInfo = C_ScenarioInfo and C_ScenarioInfo.GetCriteriaInfo(i)
         
@@ -918,59 +1264,42 @@ function KDT:UpdateScenarioInfo()
             local completed = criteriaInfo.completed
             local quantity = criteriaInfo.quantity
             local totalQuantity = criteriaInfo.totalQuantity
-            local quantityString = criteriaInfo.quantityString or ""
-            local isWeighted = criteriaInfo.isWeighted
             
-            -- Forces detection: last criteria OR isWeighted OR contains "Force"/"Feind"
-            local isForces = isWeighted or 
+            local isForces = criteriaInfo.isWeightedProgress or 
                             desc:find("Enemy Forces") or 
                             desc:find("Feindliche") or
                             desc:find("Forces ennemies") or
                             (i == numCriteria and totalQuantity and totalQuantity > 100)
             
             if isForces then
-                -- Parse forces
                 local total = totalQuantity or 0
-                local current = 0
+                local current = quantity or 0
                 local percent = 0
                 
-                -- quantityString in WoW 12.0 is the raw count (e.g., "123" or "45%")
-                if quantityString and quantityString ~= "" then
-                    -- Remove % if present and convert
-                    local numStr = quantityString:gsub("%%", "")
-                    local num = tonumber(numStr)
-                    
-                    if num then
-                        if total > 0 then
-                            -- Check if num is count or percentage
-                            if num <= total then
-                                -- It's a raw count
-                                current = num
-                                percent = (current / total) * 100
-                            else
-                                -- It's percentage * 100 or something else
-                                percent = num
-                                current = math.floor((percent / 100) * total)
-                            end
-                        else
-                            percent = num
-                        end
-                    end
+                -- TWW API FIX: In WoW 12.0+, for weighted progress criteria:
+                -- - quantity is already the PERCENTAGE value (0-100)
+                -- - totalQuantity is the total available forces in dungeon (e.g., 346)
+                -- So if quantity=100 and totalQuantity=346, it means 100% complete!
+                
+                if criteriaInfo.isWeightedProgress then
+                    -- For weighted progress, quantity IS the percentage
+                    percent = current
+                    -- Calculate actual count for display: (percent/100) * total
+                    local actualCount = math.floor((current / 100) * total)
+                    state.forcesCurrent = actualCount
+                    state.forcesTotal = total
+                elseif total > 0 then
+                    -- Fallback for non-weighted: traditional calculation
+                    percent = (current / total) * 100
+                    state.forcesCurrent = current
+                    state.forcesTotal = total
+                else
+                    state.forcesCurrent = current
+                    state.forcesTotal = total
                 end
                 
-                -- Fallback: use quantity directly
-                if current == 0 and quantity and total > 0 then
-                    if quantity <= total then
-                        current = quantity
-                        percent = (current / total) * 100
-                    end
-                end
-                
-                state.forcesCurrent = current
-                state.forcesTotal = total
                 state.forcesPercent = math.min(100, percent)
             else
-                -- Boss
                 local oldBoss = nil
                 for _, b in ipairs(oldBosses) do
                     if b.name == desc then
@@ -1037,22 +1366,16 @@ function KDT:ResetTimer()
     state.bosses = {}
     state.savedToHistory = false
     state.saveScheduled = false
+    state.leaveTimer = nil
 end
 
 -- ==================== RUN HISTORY ====================
 function KDT:SaveRunToHistory()
     local state = self.timerState
     
-    -- Prevent duplicate saves with flag
-    if state.savedToHistory then
-        return
-    end
+    if state.savedToHistory then return end
+    if not state.completed then return end
     
-    if not state.completed then
-        return
-    end
-    
-    -- Use dungeon name or get it from mapID
     local dungeonName = state.dungeonName
     if (not dungeonName or dungeonName == "" or dungeonName == "Unknown") and state.mapID then
         dungeonName = self:GetDungeonName(state.mapID) or self:GetShortDungeonName(state.mapID) or "Unknown Dungeon"
@@ -1062,46 +1385,37 @@ function KDT:SaveRunToHistory()
         dungeonName = "Unknown Dungeon"
     end
     
-    -- Initialize history if needed
     if not self.DB.runHistory then
         self.DB.runHistory = {}
     end
     
-    -- Use completedTime or calculate from elapsed
     local completedTime = state.completedTime
     if completedTime == 0 or not completedTime then
         completedTime = state.elapsed or 0
     end
     
-    -- Check for duplicate (same dungeon, level, and time within 120 seconds)
     local currentTime = time()
     for _, existingRun in ipairs(self.DB.runHistory) do
         if existingRun.dungeon == dungeonName and 
            existingRun.level == (state.level or 0) and
            existingRun.timestamp and 
            math.abs(currentTime - existingRun.timestamp) < 120 then
-            -- Duplicate detected, skip
-            state.savedToHistory = true -- Mark as saved to prevent further attempts
+            state.savedToHistory = true
             return
         end
     end
     
-    -- Calculate if in time
     local timeLimit = state.timeLimit or 0
     local inTime = timeLimit > 0 and completedTime <= timeLimit
     local plus3 = timeLimit > 0 and completedTime <= timeLimit * 0.6
     local plus2 = timeLimit > 0 and completedTime <= timeLimit * 0.8
     
     local upgrade = 0
-    if plus3 then
-        upgrade = 3
-    elseif plus2 then
-        upgrade = 2
-    elseif inTime then
-        upgrade = 1
+    if plus3 then upgrade = 3
+    elseif plus2 then upgrade = 2
+    elseif inTime then upgrade = 1
     end
     
-    -- Create run entry
     local runEntry = {
         dungeon = dungeonName,
         level = state.level or 0,
@@ -1114,13 +1428,9 @@ function KDT:SaveRunToHistory()
         timestamp = currentTime,
     }
     
-    -- Mark as saved BEFORE adding to prevent race conditions
     state.savedToHistory = true
-    
-    -- Add to history (at the beginning)
     table.insert(self.DB.runHistory, 1, runEntry)
     
-    -- Keep only last 30 runs
     while #self.DB.runHistory > 30 do
         table.remove(self.DB.runHistory)
     end
@@ -1138,48 +1448,234 @@ function KDT:ClearRunHistory()
 end
 
 -- ==================== HIDE/SHOW DEFAULT WOW TIMER ====================
+-- CRITICAL FIX: Only hide in M+, and properly collapse (not just alpha=0)
 function KDT:UpdateDefaultTimerVisibility()
-    -- Only hide if our timer overlay is enabled
-    local shouldHide = self.DB and self.DB.timer and self.DB.timer.enabled
+    local state = self.timerState
     
-    -- Try various methods to hide the default M+ timer (WoW 12.0 compatible)
-    -- Method 1: ScenarioBlocksFrame (older versions)
+    -- Only hide if: 1. Our timer is enabled, 2. We are IN a Mythic+ dungeon
+    local inMythicPlus = C_ChallengeMode and C_ChallengeMode.IsChallengeModeActive and C_ChallengeMode.IsChallengeModeActive()
+    local shouldHide = self.DB and self.DB.timer and self.DB.timer.enabled and (inMythicPlus or state.inMythicPlus)
+    
+    -- ScenarioBlocksFrame (older versions)
     if ScenarioBlocksFrame then
         if shouldHide then
+            if not ScenarioBlocksFrame.kdtOrigHeight then
+                ScenarioBlocksFrame.kdtOrigHeight = ScenarioBlocksFrame:GetHeight()
+            end
             ScenarioBlocksFrame:SetAlpha(0)
+            ScenarioBlocksFrame:SetHeight(1)
+            ScenarioBlocksFrame:EnableMouse(false)
         else
             ScenarioBlocksFrame:SetAlpha(1)
+            ScenarioBlocksFrame:SetHeight(ScenarioBlocksFrame.kdtOrigHeight or 100)
+            ScenarioBlocksFrame:EnableMouse(true)
         end
     end
     
-    -- Method 2: ObjectiveTrackerFrame ScenarioHeader
+    -- ObjectiveTrackerFrame ScenarioHeader
     if ObjectiveTrackerFrame and ObjectiveTrackerFrame.BlocksFrame then
         local blocksFrame = ObjectiveTrackerFrame.BlocksFrame
         if blocksFrame.ScenarioHeader then
             if shouldHide then
+                if not blocksFrame.ScenarioHeader.kdtOrigHeight then
+                    blocksFrame.ScenarioHeader.kdtOrigHeight = blocksFrame.ScenarioHeader:GetHeight()
+                end
                 blocksFrame.ScenarioHeader:SetAlpha(0)
+                blocksFrame.ScenarioHeader:SetHeight(1)
             else
                 blocksFrame.ScenarioHeader:SetAlpha(1)
+                blocksFrame.ScenarioHeader:SetHeight(blocksFrame.ScenarioHeader.kdtOrigHeight or 50)
             end
         end
     end
     
-    -- Method 3: ScenarioObjectiveTracker (WoW 12.0+)
+    -- ScenarioObjectiveTracker (WoW 12.0+) - Most important for TWW
     if ScenarioObjectiveTracker then
         if shouldHide then
+            if not ScenarioObjectiveTracker.kdtOrigHeight then
+                ScenarioObjectiveTracker.kdtOrigHeight = ScenarioObjectiveTracker:GetHeight()
+            end
             ScenarioObjectiveTracker:SetAlpha(0)
+            ScenarioObjectiveTracker:SetHeight(1)
+            ScenarioObjectiveTracker:EnableMouse(false)
+            if ScenarioObjectiveTracker.Header then
+                if not ScenarioObjectiveTracker.Header.kdtOrigHeight then
+                    ScenarioObjectiveTracker.Header.kdtOrigHeight = ScenarioObjectiveTracker.Header:GetHeight()
+                end
+                ScenarioObjectiveTracker.Header:SetAlpha(0)
+                ScenarioObjectiveTracker.Header:SetHeight(1)
+            end
+            if ScenarioObjectiveTracker.ContentsFrame then
+                ScenarioObjectiveTracker.ContentsFrame:SetAlpha(0)
+                ScenarioObjectiveTracker.ContentsFrame:SetHeight(1)
+            end
         else
             ScenarioObjectiveTracker:SetAlpha(1)
+            ScenarioObjectiveTracker:SetHeight(ScenarioObjectiveTracker.kdtOrigHeight or 150)
+            ScenarioObjectiveTracker:EnableMouse(true)
+            if ScenarioObjectiveTracker.Header then
+                ScenarioObjectiveTracker.Header:SetAlpha(1)
+                ScenarioObjectiveTracker.Header:SetHeight(ScenarioObjectiveTracker.Header.kdtOrigHeight or 25)
+            end
+            if ScenarioObjectiveTracker.ContentsFrame then
+                ScenarioObjectiveTracker.ContentsFrame:SetAlpha(1)
+            end
         end
     end
     
-    -- Method 4: ObjectiveTrackerScenarioHeader (alternative)
+    -- ObjectiveTrackerScenarioHeader (alternative)
     if ObjectiveTrackerScenarioHeader then
         if shouldHide then
+            if not ObjectiveTrackerScenarioHeader.kdtOrigHeight then
+                ObjectiveTrackerScenarioHeader.kdtOrigHeight = ObjectiveTrackerScenarioHeader:GetHeight()
+            end
             ObjectiveTrackerScenarioHeader:SetAlpha(0)
+            ObjectiveTrackerScenarioHeader:SetHeight(1)
         else
             ObjectiveTrackerScenarioHeader:SetAlpha(1)
+            ObjectiveTrackerScenarioHeader:SetHeight(ObjectiveTrackerScenarioHeader.kdtOrigHeight or 50)
+        end
+    end
+    
+    -- ==================== HIDE QUEST TRACKER IN M+ ====================
+    -- Hide QuestObjectiveTracker (WoW 12.0+ main quest tracker module)
+    if QuestObjectiveTracker then
+        if shouldHide then
+            if not QuestObjectiveTracker.kdtOrigHeight then
+                QuestObjectiveTracker.kdtOrigHeight = QuestObjectiveTracker:GetHeight()
+            end
+            QuestObjectiveTracker:SetAlpha(0)
+            QuestObjectiveTracker:SetHeight(1)
+            QuestObjectiveTracker:EnableMouse(false)
+            -- Also hide header and contents if they exist
+            if QuestObjectiveTracker.Header then
+                QuestObjectiveTracker.Header:SetAlpha(0)
+                QuestObjectiveTracker.Header:SetHeight(1)
+            end
+            if QuestObjectiveTracker.ContentsFrame then
+                QuestObjectiveTracker.ContentsFrame:SetAlpha(0)
+                QuestObjectiveTracker.ContentsFrame:SetHeight(1)
+            end
+        else
+            QuestObjectiveTracker:SetAlpha(1)
+            QuestObjectiveTracker:SetHeight(QuestObjectiveTracker.kdtOrigHeight or 200)
+            QuestObjectiveTracker:EnableMouse(true)
+            if QuestObjectiveTracker.Header then
+                QuestObjectiveTracker.Header:SetAlpha(1)
+            end
+            if QuestObjectiveTracker.ContentsFrame then
+                QuestObjectiveTracker.ContentsFrame:SetAlpha(1)
+            end
+        end
+    end
+    
+    -- Hide Quest header in ObjectiveTrackerFrame.BlocksFrame (WoW 12.0+)
+    if ObjectiveTrackerFrame and ObjectiveTrackerFrame.BlocksFrame then
+        local blocksFrame = ObjectiveTrackerFrame.BlocksFrame
+        if blocksFrame.QuestHeader then
+            if shouldHide then
+                if not blocksFrame.QuestHeader.kdtOrigHeight then
+                    blocksFrame.QuestHeader.kdtOrigHeight = blocksFrame.QuestHeader:GetHeight()
+                end
+                blocksFrame.QuestHeader:SetAlpha(0)
+                blocksFrame.QuestHeader:SetHeight(1)
+            else
+                blocksFrame.QuestHeader:SetAlpha(1)
+                blocksFrame.QuestHeader:SetHeight(blocksFrame.QuestHeader.kdtOrigHeight or 50)
+            end
+        end
+    end
+    
+    -- Hide entire ObjectiveTrackerFrame in M+ (nuclear option for TWW)
+    -- This ensures NOTHING from the default tracker shows, including quests
+    if ObjectiveTrackerFrame then
+        if shouldHide then
+            if not ObjectiveTrackerFrame.kdtWasShown then
+                ObjectiveTrackerFrame.kdtWasShown = ObjectiveTrackerFrame:IsShown()
+            end
+            -- Instead of hiding completely (which might cause issues), 
+            -- move it way off screen or set alpha to 0
+            if not ObjectiveTrackerFrame.kdtOrigAlpha then
+                ObjectiveTrackerFrame.kdtOrigAlpha = ObjectiveTrackerFrame:GetAlpha()
+            end
+            ObjectiveTrackerFrame:SetAlpha(0)
+            ObjectiveTrackerFrame:EnableMouse(false)
+        else
+            if ObjectiveTrackerFrame.kdtOrigAlpha then
+                ObjectiveTrackerFrame:SetAlpha(ObjectiveTrackerFrame.kdtOrigAlpha)
+            else
+                ObjectiveTrackerFrame:SetAlpha(1)
+            end
+            ObjectiveTrackerFrame:EnableMouse(true)
+        end
+    end
+    
+    -- Force ObjectiveTracker relayout
+    if ObjectiveTrackerFrame and ObjectiveTrackerFrame.Update then
+        if not self.lastTrackerUpdate or GetTime() - self.lastTrackerUpdate > 1 then
+            self.lastTrackerUpdate = GetTime()
+            C_Timer.After(0.1, function()
+                if ObjectiveTrackerFrame.Update then
+                    pcall(ObjectiveTrackerFrame.Update, ObjectiveTrackerFrame)
+                end
+            end)
         end
     end
 end
 
+-- ==================== INITIALIZE TIMER ====================
+function KDT:InitializeTimer()
+    if not self.DB.timer then
+        self.DB.timer = {}
+    end
+    
+    local defaults = {
+        enabled = true,
+        locked = false,
+        scale = 1.0,
+        fontSize = 28,
+        headerFontSize = 14,
+        deathFontSize = 16,
+        showWhenInactive = false,
+        position = nil,
+        colors = {},
+    }
+    
+    for k, v in pairs(defaults) do
+        if self.DB.timer[k] == nil then
+            self.DB.timer[k] = v
+        end
+    end
+    
+    self:CreateExternalTimer()
+    self:UpdateDefaultTimerVisibility()
+    
+    self.timerTicker = C_Timer.NewTicker(0.1, function()
+        KDT:UpdateTimerFromGame()
+        KDT:UpdateExternalTimer()
+        KDT:UpdateDefaultTimerVisibility()
+    end)
+end
+
+-- ==================== TOGGLE TIMER ====================
+function KDT:ToggleTimer()
+    if not self.DB.timer then
+        self.DB.timer = {}
+    end
+    
+    self.DB.timer.enabled = not self.DB.timer.enabled
+    
+    if self.DB.timer.enabled then
+        if not self.ExternalTimer then
+            self:CreateExternalTimer()
+        end
+        self:Print("Timer overlay enabled.")
+    else
+        if self.ExternalTimer then
+            self.ExternalTimer:Hide()
+        end
+        self:Print("Timer overlay disabled.")
+    end
+    
+    self:UpdateDefaultTimerVisibility()
+end

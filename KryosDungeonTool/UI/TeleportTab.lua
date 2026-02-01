@@ -8,9 +8,33 @@ function KDT:CreateTeleportElements(f)
     local e = f.teleportElements
     local c = f.content
     
+    -- Settings box at top
+    e.settingsBox = CreateFrame("Frame", nil, c, "BackdropTemplate")
+    e.settingsBox:SetPoint("TOPLEFT", 10, -5)
+    e.settingsBox:SetPoint("TOPRIGHT", -10, -5)
+    e.settingsBox:SetHeight(30)
+    e.settingsBox:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        edgeSize = 1
+    })
+    e.settingsBox:SetBackdropColor(0.08, 0.08, 0.10, 0.95)
+    e.settingsBox:SetBackdropBorderColor(0.2, 0.2, 0.25, 1)
+    
+    -- Chat message checkbox
+    e.chatMsgCheck = CreateFrame("CheckButton", nil, e.settingsBox, "UICheckButtonTemplate")
+    e.chatMsgCheck:SetSize(20, 20)
+    e.chatMsgCheck:SetPoint("LEFT", 10, 0)
+    e.chatMsgCheck.Text:SetText("Announce teleport in chat")
+    e.chatMsgCheck.Text:SetFontObject("GameFontNormalSmall")
+    e.chatMsgCheck:SetScript("OnClick", function(self)
+        if not KDT.DB.settings then KDT.DB.settings = {} end
+        KDT.DB.settings.announceTeleport = self:GetChecked()
+    end)
+    
     -- Scroll Frame for all teleports
     e.scroll = CreateFrame("ScrollFrame", "KryosDTTeleportScroll", c, "UIPanelScrollFrameTemplate")
-    e.scroll:SetPoint("TOPLEFT", c, "TOPLEFT", 10, -5)
+    e.scroll:SetPoint("TOPLEFT", e.settingsBox, "BOTTOMLEFT", 0, -5)
     e.scroll:SetPoint("BOTTOMRIGHT", c, "BOTTOMRIGHT", -28, 10)
     
     e.scrollChild = CreateFrame("Frame", nil, e.scroll)
@@ -22,6 +46,14 @@ end
 function KDT:SetupTeleportRefresh(f)
     function f:RefreshTeleports()
         local e = self.teleportElements
+        
+        -- Update checkbox state
+        if e.chatMsgCheck then
+            -- Default to true if not set
+            local announce = KDT.DB.settings.announceTeleport
+            if announce == nil then announce = true end
+            e.chatMsgCheck:SetChecked(announce)
+        end
         
         -- Clear existing buttons
         for _, btn in ipairs(self.teleportButtons) do
@@ -107,13 +139,18 @@ function KDT:SetupTeleportRefresh(f)
                 -- Track if message was already sent for this click
                 btn.messageSent = false
                 
-                -- PreClick: Send chat message (only once per click)
+                -- PreClick: Send chat message (only once per click, and only if enabled)
                 btn:SetScript("PreClick", function(self, button, down)
                     if down and not self.messageSent and isKnown then
                         self.messageSent = true
-                        local channel = IsInRaid() and "RAID" or (IsInGroup() and "PARTY" or nil)
-                        if channel then
-                            SendChatMessage("[Kryos Dungeon Tool] Porting to \"" .. dungeon.name .. "\"", channel)
+                        -- Check if announcements are enabled
+                        local announce = KDT.DB.settings.announceTeleport
+                        if announce == nil then announce = true end -- Default to true
+                        if announce then
+                            local channel = IsInRaid() and "RAID" or (IsInGroup() and "PARTY" or nil)
+                            if channel then
+                                SendChatMessage("[Kryos Dungeon Tool] Porting to \"" .. dungeon.name .. "\"", channel)
+                            end
                         end
                     end
                 end)

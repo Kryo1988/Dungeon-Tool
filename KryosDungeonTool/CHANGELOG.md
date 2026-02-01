@@ -1,5 +1,208 @@
 # KryosDungeonTool Changelog
 
+## Version 1.8.10 (2026-01-31)
+
+### M+ Timer Improvements
+
+**1. Blizzard Timer - Only Hidden in M+ Dungeons**
+- The default Blizzard timer is now ONLY hidden when you are actually inside a Mythic+ dungeon
+- In open world or other content, the Blizzard timer remains visible as normal
+
+**2. No More Empty Space**
+- Fixed the issue where hiding the Blizzard timer left a large empty gap in the objective tracker
+- Now properly collapses the frame instead of just making it invisible
+
+**3. Dungeon Name & Key Level Display**
+- Added a header row above the timer showing the dungeon name and key level
+- Format: "+15 Operation: Mechagon" (with colored key level)
+
+**4. Options Button**
+- Added gear icon (⚙️) in top-right corner of timer
+- Click to open Timer Settings directly
+- Works both inside and outside M+ dungeons
+
+**5. Redesigned Timer Settings Window**
+- Matches KDT dark UI theme
+- Organized sections with headers
+- **Working Font Size Sliders** - Changes apply immediately by recreating the timer
+- **Working Color Pickers** - Compatible with WoW 11.0+ and legacy API
+- Checkboxes for Lock Position and Show Preview
+- Three bottom buttons: Reset Position, Reset Colors, Hide Timer
+
+**6. Completion Time Preservation Fix**
+- Fixed bug where timer would reset to 0:00 after dungeon completion
+- Now properly preserves and displays the final completion time
+- Last boss is now correctly marked as killed when dungeon completes
+
+**7. Preview Mode**
+- When "Show Timer Outside M+" is enabled, displays demo data
+- Shows "[PREVIEW]" indicator so you know it's not real data
+- Useful for positioning and testing color settings
+
+---
+
+## Version 1.8.9 (2026-01-29)
+
+### Critical Bugfix: Warrior Tier Set IDs Corrected
+
+**Fixed incorrect tier set item IDs for all Warrior specs** - The previous version had Priest tier IDs (237700 series) instead of Warrior Living Weapon's tier IDs (237610 series).
+
+### Fixes:
+- **Fury (72)**: Fixed tier set IDs (237610, 237608, 237613, 237611, 237609), updated trinkets to Astral Antenna + Cursed Stone Idol, updated weapon to Circuit Breaker
+- **Arms (71)**: Fixed tier set IDs, updated trinkets to Astral Antenna + Cursed Stone Idol
+- **Protection (73)**: Fixed tier set IDs
+
+### Havoc DH Updates:
+- **Havoc (577)**: Updated trinkets to Astral Antenna (50.5%) + Cursed Stone Idol (44.0%) based on current Archon.gg M+ meta (Sigil of the Cosmic Hunt was only 14.2%)
+
+### Data Source:
+All corrections verified against Archon.gg M+ gear data (January 2025)
+
+---
+
+## Version 1.8.8 (2026-01-29)
+
+### Major Update: All Specs BiS Data Updated from Archon.gg
+
+**Complete BiS data refresh for all 39 specs** with correct Tier Set items and current M+ meta gear.
+
+### Death Knight
+- **Blood (250)**: Hollow Sentinel's tier, Brand of Ceaseless Ire + Astral Antenna trinkets, Charged Claymore
+- **Frost (251)**: Hollow Sentinel's tier, Astral Antenna + Cursed Stone Idol, Charged Claymore  
+- **Unholy (252)**: Hollow Sentinel's tier, Astral Antenna + Cursed Stone Idol, Charged Claymore
+
+### Demon Hunter
+- **Havoc (577)**: Charhound's Vicious tier, Sigil of the Cosmic Hunt + Astral Antenna, Everforged Warglaives
+- **Vengeance (581)**: Charhound's Vicious tier, Astral Antenna + Brand of Ceaseless Ire, Everforged Warglaives
+
+### Warrior
+- **Arms (71)**: Living Weapon tier, Sigil of the Cosmic Hunt + Astral Antenna, Void Reaper's Greatsword
+- **Fury (72)**: Living Weapon tier, Sigil of the Cosmic Hunt + Seaforium Pacemaker, Void Reaper's Edge x2
+- **Protection (73)**: Living Weapon tier, Brand of Ceaseless Ire + Astral Antenna, Longsword + Shield
+
+### Paladin
+- **Holy (65)**: Oathbinder's tier, Araz's Ritual Forge + Creeping Coagulum
+- **Protection (66)**: Oathbinder's tier, Brand of Ceaseless Ire + Astral Antenna
+- **Retribution (70)**: Oathbinder's tier, Sigil of the Cosmic Hunt + Astral Antenna, Charged Claymore
+
+### Druid
+- **Balance (102)**: Arboreal Cultivator's tier, Araz's Ritual Forge + Screams of a Forgotten Sky
+- **Feral (103)**: Arboreal Cultivator's tier, Sigil of the Cosmic Hunt + Astral Antenna
+- **Guardian (104)**: Arboreal Cultivator's tier, Brand of Ceaseless Ire + Astral Antenna
+- **Restoration (105)**: Arboreal Cultivator's tier, Araz's Ritual Forge + Creeping Coagulum
+
+### Rogue
+- **Assassination (259)**: Gatecrasher's tier, Sigil of the Cosmic Hunt + Astral Antenna, Everforged Daggers
+- **Outlaw (260)**: Gatecrasher's tier, Sigil of the Cosmic Hunt + Astral Antenna, Everforged Daggers
+- **Subtlety (261)**: Gatecrasher's tier, Sigil of the Cosmic Hunt + Cursed Stone Idol, Everforged Daggers
+
+### Monk
+- **Brewmaster (268)**: Mystic Heron's tier, Brand of Ceaseless Ire + Astral Antenna
+- **Windwalker (269)**: Mystic Heron's tier, Sigil of the Cosmic Hunt + Astral Antenna, Warglaives
+- **Mistweaver (270)**: Mystic Heron's tier, Araz's Ritual Forge + Creeping Coagulum
+
+### Hunter
+- **Beast Mastery (253)**: Deathstalker's tier, Sigil of the Cosmic Hunt + Astral Antenna, Charged Bow
+- **Marksmanship (254)**: Deathstalker's tier, Sigil of the Cosmic Hunt + Astral Antenna, Charged Bow
+- **Survival (255)**: Deathstalker's tier, Sigil of the Cosmic Hunt + Cursed Stone Idol, Charged Halberd
+
+### Shaman
+- **Elemental (262)**: Farseer's tier, Araz's Ritual Forge + Screams of a Forgotten Sky
+- **Enhancement (263)**: Farseer's tier, Sigil of the Cosmic Hunt + Astral Antenna, Everforged Maces
+- **Restoration (264)**: Farseer's tier, Araz's Ritual Forge + Creeping Coagulum
+
+### Evoker
+- **Devastation (1467)**: Scalecommander's tier, Araz's Ritual Forge + Screams of a Forgotten Sky
+- **Preservation (1468)**: Scalecommander's tier, Araz's Ritual Forge + Creeping Coagulum
+- **Augmentation (1473)**: Scalecommander's tier, Araz's Ritual Forge + Astral Antenna
+
+### Mage
+- **Arcane (62)**: Cryptic Illusionist tier, Araz's Ritual Forge + Screams of a Forgotten Sky
+- **Fire (63)**: Cryptic Illusionist tier, Araz's Ritual Forge + Screams of a Forgotten Sky
+- **Frost (64)**: Cryptic Illusionist tier, Araz's Ritual Forge + So'leah's Secret Technique
+
+### Warlock
+- **Affliction (265)**: Sinister Savant tier, Araz's Ritual Forge + Screams of a Forgotten Sky
+- **Demonology (266)**: Sinister Savant tier, Araz's Ritual Forge + Screams of a Forgotten Sky
+- **Destruction (267)**: Sinister Savant tier, Araz's Ritual Forge + Screams of a Forgotten Sky
+
+### Priest
+- **Discipline (256)**: Void-Preacher's tier, Araz's Ritual Forge + Creeping Coagulum
+- **Holy (257)**: Void-Preacher's tier, Araz's Ritual Forge + Creeping Coagulum
+- **Shadow (258)**: Void-Preacher's tier, Araz's Ritual Forge + Screams of a Forgotten Sky
+
+### Common Items Across All Specs
+- **Reshii Wraps** (235499) - Universal cloak with ~97% popularity
+- **Ring of Earthen Craftsmanship** (215135) - Crafted ring slot 1
+- **Amulet of Earthen Craftsmanship** (215136) - Crafted neck for most specs
+- **Interloper's Sabatons** - Class-appropriate feet (Plate: 243307, Leather: 243306, Mail: 243305, Cloth: 243308)
+
+### Technical Notes
+- All tier set item IDs are now correct and will show proper WoW tooltips
+- Source data based on Archon.gg Mythic+ meta (January 2025)
+- Popularity values reflect current M+ usage patterns
+
+---
+
+## Version 1.8.6 (2026-01-29)
+
+### Major Fix
+- **Fixed Havoc DH BiS Data**: Completely updated with correct Item IDs from Archon.gg
+  - All Tier pieces now show correctly: Charhound's Vicious Scalp (237691), Hornguards (237689), Bindings (237694), Felclaws (237692), Hidecoat (237690)
+  - Correct weapons: Interrogator's Flensing Blade (185780), Everforged Warglaive (222441)
+  - Correct trinkets: Astral Antenna (242395), Cursed Stone Idol (246344)
+  - All rings, neck, back, wrist, waist, feet corrected
+
+### Improvements
+- **Re-enabled native WoW tooltips** - Now that Item IDs are correct, hovering shows the actual WoW item tooltip
+- **Added Archon.gg Links Reference** - ARCHON_LINKS.md contains all spec links for future BiS updates
+- **Tooltip fallback** - If item ID lookup fails, shows KDT data only
+
+### Note
+- Other specs still need Item ID updates - they will show incorrect WoW tooltips
+- Use `/kdt debugbis` to check your spec's data
+- BiS data can be manually edited via right-click on any item
+
+---
+
+## Version 1.8.5 (2026-01-29)
+
+### Bug Fixes
+- **Fixed BiS Tooltip showing wrong items**: The tooltip no longer uses WoW's native `SetItemByID()` which was showing incorrect items due to wrong Item IDs in the database
+  - Tooltip now shows only KDT's own data: Item Name, Source, Stats, Enchant, Gems
+  - Item IDs are displayed but marked as "may need verification"
+  - The displayed item **names** and **sources** are correct - only the internal IDs were wrong
+
+### Known Issue
+- Item IDs in the database are incorrect and need to be updated with correct values
+- This does NOT affect the displayed information - names, sources, enchants, and gems are all correct
+- Users can manually correct Item IDs via right-click → Edit if needed
+
+---
+
+## Version 1.8.4 (2026-01-29)
+
+### New Features
+- **Added Aldrachi Reaver Spec**: New Demon Hunter 3rd spec for WoW 12.0 (Spec ID: 1456)
+  - Full BiS gear set added
+  - Note: SpecID may need verification - use `/kdt debugbis` to check
+
+### Debug Commands Added
+- `/kdt debugbis` - Shows detailed BiS debugging info:
+  - Player's current specID
+  - Whether BIS_DATA has entry for that specID
+  - What item is being returned for HEAD slot
+  - Lists all available specIDs in BIS_DATA
+- `/kdt clearbis` - Clears ALL custom BiS data (use if wrong items are showing)
+
+### BiS Troubleshooting
+If you're seeing wrong items for your class:
+1. Run `/kdt debugbis` to see your specID and what data is loaded
+2. Run `/kdt clearbis` to clear any corrupted custom data
+3. Report the specID shown if items are still wrong
+
+---
+
 ## Version 1.8.3 (2026-01-29)
 
 ### Bug Fixes

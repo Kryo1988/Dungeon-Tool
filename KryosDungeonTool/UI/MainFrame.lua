@@ -189,12 +189,12 @@ function KDT:CreateMainFrame()
         end
         
         -- Hide all elements
-        for _, el in pairs(self.groupElements) do if el.Hide then el:Hide() end end
-        for _, el in pairs(self.blacklistElements) do if el.Hide then el:Hide() end end
-        for _, el in pairs(self.teleportElements) do if el.Hide then el:Hide() end end
-        for _, el in pairs(self.timerElements) do if el.Hide then el:Hide() end end
-        for _, el in pairs(self.bisElements) do if el.Hide then el:Hide() end end
-        for _, btn in ipairs(self.teleportButtons) do if btn.Hide then btn:Hide() end end
+        for _, el in pairs(self.groupElements) do if el and el.Hide then el:Hide() end end
+        for _, el in pairs(self.blacklistElements) do if el and el.Hide then el:Hide() end end
+        for _, el in pairs(self.teleportElements) do if el and el.Hide then el:Hide() end end
+        for _, el in pairs(self.timerElements) do if el and el.Hide then el:Hide() end end
+        for _, el in pairs(self.bisElements) do if el and el.Hide then el:Hide() end end
+        for _, btn in ipairs(self.teleportButtons) do if btn and btn.Hide then btn:Hide() end end
         
         -- Also hide dynamic rows (member rows, blacklist rows, bis rows)
         if self.memberRows then
@@ -207,6 +207,11 @@ function KDT:CreateMainFrame()
             for _, row in ipairs(self.bisRows) do if row and row.Hide then row:Hide() end end
         end
         
+        -- CRITICAL: Hide the memberContainer specifically (contains group member rows)
+        if self.groupElements and self.groupElements.memberContainer then
+            self.groupElements.memberContainer:Hide()
+        end
+        
         -- Show selected tab
         local function ActivateTab(tab)
             tab:SetBackdropColor(0.15, 0.15, 0.18, 1)
@@ -217,24 +222,28 @@ function KDT:CreateMainFrame()
         
         if tabName == "group" then
             ActivateTab(self.groupTab)
-            for _, el in pairs(self.groupElements) do if el.Show then el:Show() end end
+            for _, el in pairs(self.groupElements) do if el and el.Show then el:Show() end end
+            -- Make sure memberContainer is shown for group tab
+            if self.groupElements and self.groupElements.memberContainer then
+                self.groupElements.memberContainer:Show()
+            end
             if self.RefreshGroup then self:RefreshGroup() end
         elseif tabName == "teleport" then
             ActivateTab(self.teleportTab)
-            for _, el in pairs(self.teleportElements) do if el.Show then el:Show() end end
-            for _, btn in ipairs(self.teleportButtons) do if btn.Show then btn:Show() end end
+            for _, el in pairs(self.teleportElements) do if el and el.Show then el:Show() end end
+            for _, btn in ipairs(self.teleportButtons) do if btn and btn.Show then btn:Show() end end
             if self.RefreshTeleports then self:RefreshTeleports() end
         elseif tabName == "timer" then
             ActivateTab(self.timerTab)
-            for _, el in pairs(self.timerElements) do if el.Show then el:Show() end end
+            for _, el in pairs(self.timerElements) do if el and el.Show then el:Show() end end
             if self.RefreshTimer then self:RefreshTimer() end
         elseif tabName == "bis" then
             ActivateTab(self.bisTab)
-            for _, el in pairs(self.bisElements) do if el.Show then el:Show() end end
+            for _, el in pairs(self.bisElements) do if el and el.Show then el:Show() end end
             if self.RefreshBis then self:RefreshBis() end
         else
             ActivateTab(self.blacklistTab)
-            for _, el in pairs(self.blacklistElements) do if el.Show then el:Show() end end
+            for _, el in pairs(self.blacklistElements) do if el and el.Show then el:Show() end end
             if self.RefreshBlacklist then self:RefreshBlacklist() end
         end
     end

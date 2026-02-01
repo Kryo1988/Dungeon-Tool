@@ -332,6 +332,8 @@ function KDT:SetupRightClickMenu()
         -- Get the unit from context - try multiple approaches
         local unit = nil
         local name = nil
+        local realm = nil
+        local class = nil
         
         if contextData then
             unit = contextData.unit
@@ -347,10 +349,23 @@ function KDT:SetupRightClickMenu()
             end
         end
         
-        -- Get name from unit if we have one
+        -- Get name, realm, and class from unit if we have one
         if unit and UnitExists(unit) then
             if not UnitIsPlayer(unit) then return end
-            name = UnitName(unit)
+            
+            -- Get full name with realm
+            local unitName, unitRealm = UnitName(unit)
+            name = unitName
+            realm = unitRealm
+            
+            -- If no realm returned, get player's realm (same server)
+            if not realm or realm == "" then
+                realm = GetRealmName()
+            end
+            
+            -- Get class
+            local _, classToken = UnitClass(unit)
+            class = classToken
             
             -- Don't show for self
             if UnitIsUnit(unit, "player") then return end
@@ -358,11 +373,14 @@ function KDT:SetupRightClickMenu()
         
         if not name then return end
         
-        -- Remove realm from name
-        name = name:gsub("%-.*", "")
+        -- Create full name with server for storage/lookup
+        local fullName = name
+        if realm and realm ~= "" then
+            fullName = name .. "-" .. realm:gsub(" ", "")
+        end
         
-        -- Check if already blacklisted
-        local alreadyBlacklisted = KDT:IsBlacklisted(name)
+        -- Check if already blacklisted (check both with and without server)
+        local alreadyBlacklisted = KDT:IsBlacklisted(fullName) or KDT:IsBlacklisted(name)
         
         -- Add separator
         rootDescription:CreateDivider()
@@ -370,16 +388,18 @@ function KDT:SetupRightClickMenu()
         if alreadyBlacklisted then
             -- Option to remove from blacklist
             rootDescription:CreateButton("|cFF00FF00Remove from Blacklist|r", function()
+                -- Try to remove both variants
+                KDT:RemoveFromBlacklist(fullName)
                 KDT:RemoveFromBlacklist(name)
-                KDT:Print("|cFF00FF00Removed from blacklist:|r " .. name)
+                KDT:Print("|cFF00FF00Removed from blacklist:|r " .. fullName)
                 if KDT.MainFrame and KDT.MainFrame:IsShown() then
                     KDT.MainFrame:RefreshBlacklist()
                 end
             end)
         else
-            -- Option to add to blacklist - directly without dialog
+            -- Option to add to blacklist - with class and server
             rootDescription:CreateButton("|cFFFF0000Add to Blacklist|r", function()
-                KDT:AddToBlacklist(name, "Added by Rightclick")
+                KDT:AddToBlacklist(fullName, "Added via Rightclick", class)
                 if KDT.MainFrame and KDT.MainFrame:IsShown() then
                     KDT.MainFrame:RefreshBlacklist()
                 end
@@ -457,10 +477,25 @@ function KDT:HandleAddonMessage(msg, sender)
         level = tonumber(level)
         
         if mapID and level then
+            -- Store in groupKeys
             self.groupKeys[senderName] = {
                 mapID = mapID,
                 level = level,
                 dungeonName = self:GetDungeonName(mapID) or "Unknown",
+            }
+            
+            -- Also store in receivedKeys (for GetUnitKeystone compatibility)
+            if not self.receivedKeys then self.receivedKeys = {} end
+            self.receivedKeys[senderName] = {
+                mapID = mapID,
+                level = level,
+                time = GetTime(),
+            }
+            -- Also store with full name if sender has realm
+            self.receivedKeys[sender] = {
+                mapID = mapID,
+                level = level,
+                time = GetTime(),
             }
             
             -- Refresh UI if visible
@@ -469,8 +504,12 @@ function KDT:HandleAddonMessage(msg, sender)
             end
         end
         
+    elseif msg:find("^BL_SHARE:") or msg:find("^BL_SHARE_DONE:") then
+        -- Blacklist share (new format)
+        self:ReceiveBlacklistShare(msg, senderName)
+        
     elseif msg:find("^BL:") then
-        -- Blacklist share
+        -- Blacklist share (old format - for backwards compatibility)
         self:HandleBlacklistShare(msg, senderName)
     end
 end
@@ -495,6 +534,7 @@ local eventFrame = CreateFrame("Frame")
 eventFrame:RegisterEvent("INSPECT_READY")
 eventFrame:RegisterEvent("CHALLENGE_MODE_COMPLETED")
 eventFrame:RegisterEvent("CHALLENGE_MODE_RESET")
+eventFrame:RegisterEvent("CHAT_MSG_ADDON")
 eventFrame:SetScript("OnEvent", function(self, event, ...)
     if event == "INSPECT_READY" then
         local guid = ...
@@ -507,6 +547,12 @@ eventFrame:SetScript("OnEvent", function(self, event, ...)
     elseif event == "CHALLENGE_MODE_RESET" then
         -- M+ was reset (left dungeon or started new)
         KDT:OnChallengeModeReset()
+    elseif event == "CHAT_MSG_ADDON" then
+        -- Handle addon messages (for blacklist sharing and key sharing)
+        local prefix, msg, channel, sender = ...
+        if prefix == "KDT" and msg and sender then
+            KDT:HandleAddonMessage(msg, sender)
+        end
     end
 end)
 
@@ -635,16 +681,24 @@ function KDT:OnInspectReady(guid)
                     role = role,
                     time = GetTime()
                 }
-                
-                -- Refresh group UI if it's open
-                if self.MainFrame and self.MainFrame:IsShown() and self.MainFrame.currentTab == "group" then
-                    C_Timer.After(0.1, function()
-                        if self.MainFrame.RefreshGroup then
-                            self.MainFrame:RefreshGroup()
-                        end
-                    end)
-                end
             end
+        end
+        
+        -- Cache item level
+        local ilvl = C_PaperDollInfo.GetInspectItemLevel(unit)
+        if ilvl and ilvl > 0 then
+            if not self.itemLevelCache then self.itemLevelCache = {} end
+            local guidKey = tostring(guid)
+            self.itemLevelCache[guidKey] = math.floor(ilvl)
+        end
+        
+        -- Refresh group UI if it's open
+        if self.MainFrame and self.MainFrame:IsShown() and self.MainFrame.currentTab == "group" then
+            C_Timer.After(0.1, function()
+                if self.MainFrame.RefreshGroup then
+                    self.MainFrame:RefreshGroup()
+                end
+            end)
         end
     end
     

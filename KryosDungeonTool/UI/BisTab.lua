@@ -606,7 +606,9 @@ function KDT:SetupBisRefresh(f)
                     
                     local data = self.itemData
                     if data and data.itemID and data.itemID > 0 then
+                        -- Try to show native WoW item tooltip
                         GameTooltip:SetItemByID(data.itemID)
+                        -- Add KDT info below
                         GameTooltip:AddLine(" ")
                         GameTooltip:AddLine("|cFF00D4FF--- KDT Info ---|r")
                         GameTooltip:AddDoubleLine("Popularity:", string.format("%.1f%%", data.popularity or 0), 0.7, 0.7, 0.7, 1, 1, 1)
@@ -624,8 +626,20 @@ function KDT:SetupBisRefresh(f)
                         GameTooltip:AddLine(" ")
                         GameTooltip:AddLine("|cFFFFFF00Right-click to edit|r")
                     else
+                        -- Fallback: Show KDT data only
                         GameTooltip:ClearLines()
-                        GameTooltip:AddLine((data.name or "Unknown"), 1, 1, 1)
+                        local nameColor = "|cFFFFFFFF"
+                        if data.source == "RAID" then nameColor = "|cFFFF8000"
+                        elseif data.source == "MYTHIC_PLUS" then nameColor = "|cFFA335EE"
+                        elseif data.source == "CRAFTED" then nameColor = "|cFF00FF00" end
+                        GameTooltip:AddLine(nameColor .. (data.name or "Unknown") .. "|r", 1, 1, 1)
+                        local sourceLabel = KDT.BIS_SOURCE[data.source] or data.source or "Unknown"
+                        GameTooltip:AddLine(sourceLabel .. ": " .. (data.sourceDetail or "Unknown"), 0.7, 0.7, 0.7)
+                        if data.stats and data.stats ~= "" then
+                            GameTooltip:AddLine("Stats: " .. data.stats, 0.6, 0.8, 1)
+                        end
+                        GameTooltip:AddLine(" ")
+                        GameTooltip:AddDoubleLine("Popularity:", string.format("%.1f%%", data.popularity or 0), 0.7, 0.7, 0.7, 1, 1, 1)
                         GameTooltip:AddLine("|cFFFFFF00Right-click to edit|r")
                     end
                     GameTooltip:Show()

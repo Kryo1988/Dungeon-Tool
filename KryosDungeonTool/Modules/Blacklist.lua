@@ -4,11 +4,12 @@
 local addonName, KDT = ...
 
 -- Add to blacklist
-function KDT:AddToBlacklist(name, reason)
+function KDT:AddToBlacklist(name, reason, class)
     if not name or name == "" then return false end
     
-    -- Remove server name if present
-    name = name:gsub("%-.*", "")
+    -- Keep the full name including server (don't strip it anymore)
+    -- Only clean up spaces in realm names
+    name = name:gsub(" ", "")
     
     -- Initialize if needed
     if not self.DB.blacklist then
@@ -19,6 +20,7 @@ function KDT:AddToBlacklist(name, reason)
     self.DB.blacklist[name] = {
         reason = reason or "",
         date = date("%Y-%m-%d"),
+        class = class or nil,  -- Store class if provided
     }
     
     self:Print("Added to blacklist: " .. name)
@@ -130,8 +132,8 @@ end
 function KDT:RemoveFromBlacklist(name)
     if not name or not self.DB.blacklist then return false end
     
-    -- Remove server name if present
-    name = name:gsub("%-.*", "")
+    -- Clean up spaces in realm names
+    name = name:gsub(" ", "")
     
     if self.DB.blacklist[name] then
         self.DB.blacklist[name] = nil
@@ -142,21 +144,83 @@ function KDT:RemoveFromBlacklist(name)
     return false
 end
 
--- Check if player is blacklisted
+-- Check if player is blacklisted (checks both with server and without)
 function KDT:IsBlacklisted(name)
     if not name or not self.DB or not self.DB.blacklist then return false end
     
-    -- Remove server name if present
-    name = name:gsub("%-.*", "")
+    -- Clean up spaces
+    name = name:gsub(" ", "")
     
-    return self.DB.blacklist[name] ~= nil
+    -- Direct match (with server)
+    if self.DB.blacklist[name] then
+        return true
+    end
+    
+    -- Also check without server (for backwards compatibility with old entries)
+    local nameOnly = name:gsub("%-.*", "")
+    if self.DB.blacklist[nameOnly] then
+        return true
+    end
+    
+    -- Check if any entry matches the name part (for entries added with server)
+    for blName, _ in pairs(self.DB.blacklist) do
+        local blNameOnly = blName:gsub("%-.*", "")
+        if blNameOnly == nameOnly then
+            -- Found a match - but only return true if servers also match
+            -- or if one of them doesn't have a server specified
+            local nameServer = name:match("%-(.+)$")
+            local blServer = blName:match("%-(.+)$")
+            
+            -- If both have servers, they must match
+            if nameServer and blServer then
+                if nameServer == blServer then
+                    return true
+                end
+            else
+                -- One doesn't have a server, consider it a match
+                return true
+            end
+        end
+    end
+    
+    return false
 end
 
--- Get blacklist entry
+-- Get blacklist entry (checks both with server and without)
 function KDT:GetBlacklistEntry(name)
     if not name or not self.DB or not self.DB.blacklist then return nil end
-    name = name:gsub("%-.*", "")
-    return self.DB.blacklist[name]
+    
+    name = name:gsub(" ", "")
+    
+    -- Direct match
+    if self.DB.blacklist[name] then
+        return self.DB.blacklist[name]
+    end
+    
+    -- Check without server
+    local nameOnly = name:gsub("%-.*", "")
+    if self.DB.blacklist[nameOnly] then
+        return self.DB.blacklist[nameOnly]
+    end
+    
+    -- Check entries with servers
+    for blName, data in pairs(self.DB.blacklist) do
+        local blNameOnly = blName:gsub("%-.*", "")
+        if blNameOnly == nameOnly then
+            local nameServer = name:match("%-(.+)$")
+            local blServer = blName:match("%-(.+)$")
+            
+            if nameServer and blServer then
+                if nameServer == blServer then
+                    return data
+                end
+            else
+                return data
+            end
+        end
+    end
+    
+    return nil
 end
 
 -- Get blacklist
@@ -178,11 +242,22 @@ function KDT:CheckGroupForBlacklist()
     
     for _, unit in ipairs(units) do
         if UnitExists(unit) and not UnitIsUnit(unit, "player") then
-            local name = UnitName(unit)
-            if name and self:IsBlacklisted(name) then
-                local entry = self:GetBlacklistEntry(name)
-                self:AlertBlacklisted(name, entry and entry.reason)
-                found = true
+            -- Get full name with server
+            local name, realm = UnitName(unit)
+            if name then
+                local fullName = name
+                if realm and realm ~= "" then
+                    fullName = name .. "-" .. realm:gsub(" ", "")
+                else
+                    -- Same server as player
+                    fullName = name .. "-" .. GetRealmName():gsub(" ", "")
+                end
+                
+                if self:IsBlacklisted(fullName) then
+                    local entry = self:GetBlacklistEntry(fullName)
+                    self:AlertBlacklisted(fullName, entry and entry.reason)
+                    found = true
+                end
             end
         end
     end
@@ -197,13 +272,22 @@ function KDT:AlertBlacklisted(name, reason)
         self.alreadyAlerted = {}
     end
     
+    -- Use full name (with server) for alert tracking
     if self.alreadyAlerted[name] then
         return
     end
     self.alreadyAlerted[name] = true
     
+    -- Parse name for display
+    local displayName = name
+    local nameOnly = name:match("^([^%-]+)") or name
+    local server = name:match("%-(.+)$")
+    if server then
+        displayName = nameOnly .. "-" .. server
+    end
+    
     -- Print warning message
-    local msg = "|cFFFF0000[KDT WARNING]|r Blacklisted player in group: |cFFFFFFFF" .. name .. "|r"
+    local msg = "|cFFFF0000[KDT WARNING]|r Blacklisted player in group: |cFFFFFFFF" .. displayName .. "|r"
     if reason and reason ~= "" then
         msg = msg .. " - Reason: |cFFFFCC00" .. reason .. "|r"
     end
@@ -213,7 +297,7 @@ function KDT:AlertBlacklisted(name, reason)
     
     -- Also show as RaidWarning if possible
     if RaidNotice_AddMessage then
-        RaidNotice_AddMessage(RaidWarningFrame, "|cFFFF0000BLACKLISTED:|r " .. name, ChatTypeInfo["RAID_WARNING"])
+        RaidNotice_AddMessage(RaidWarningFrame, "|cFFFF0000BLACKLISTED:|r " .. displayName, ChatTypeInfo["RAID_WARNING"])
     end
     
     -- Play sound
@@ -235,7 +319,7 @@ function KDT:AlertBlacklisted(name, reason)
     end
     
     -- Show popup dialog
-    self:ShowBlacklistWarningDialog(name, reason)
+    self:ShowBlacklistWarningDialog(displayName, reason)
 end
 
 -- Show warning dialog for blacklisted player
@@ -392,6 +476,11 @@ function KDT:ShareBlacklist()
         return
     end
     
+    if not self.DB.blacklist then
+        self:Print("Blacklist is empty.")
+        return
+    end
+    
     local count = 0
     for name, _ in pairs(self.DB.blacklist) do
         count = count + 1
@@ -405,9 +494,11 @@ function KDT:ShareBlacklist()
     local channel = IsInRaid() and "RAID" or "PARTY"
     
     -- Send each blacklist entry as addon message
+    -- Format: BL_SHARE:name:reason:class
     for name, data in pairs(self.DB.blacklist) do
         local reason = data.reason or ""
-        local msg = "BL_SHARE:" .. name .. ":" .. reason
+        local class = data.class or ""
+        local msg = "BL_SHARE:" .. name .. ":" .. reason .. ":" .. class
         C_ChatInfo.SendAddonMessage("KDT", msg, channel)
     end
     
@@ -424,8 +515,11 @@ function KDT:ReceiveBlacklistShare(msg, sender)
     if sender == myName or sender:match("^" .. myName .. "%-") then return end
     
     if msg:match("^BL_SHARE:") then
-        local name, reason = msg:match("^BL_SHARE:([^:]+):(.*)$")
-        if name then
+        -- Format: BL_SHARE:name:reason:class
+        local data = msg:gsub("^BL_SHARE:", "")
+        local name, reason, class = strsplit(":", data)
+        
+        if name and name ~= "" then
             -- Add to pending shares
             if not self.pendingBlacklistShares then
                 self.pendingBlacklistShares = {}
@@ -434,15 +528,26 @@ function KDT:ReceiveBlacklistShare(msg, sender)
                 self.pendingBlacklistShares[sender] = {}
             end
             self.pendingBlacklistShares[sender][name] = {
-                reason = reason ~= "" and reason or nil,
+                reason = (reason and reason ~= "") and reason or nil,
+                class = (class and class ~= "") and class or nil,
                 sharedBy = sender,
             }
         end
     elseif msg:match("^BL_SHARE_DONE:") then
         local count = msg:match("^BL_SHARE_DONE:(%d+)$")
         if count and self.pendingBlacklistShares and self.pendingBlacklistShares[sender] then
-            -- Show import dialog
-            self:ShowBlacklistImportDialog(sender, self.pendingBlacklistShares[sender])
+            -- Count actual entries received
+            local receivedCount = 0
+            for _ in pairs(self.pendingBlacklistShares[sender]) do
+                receivedCount = receivedCount + 1
+            end
+            
+            if receivedCount > 0 then
+                -- Show import dialog
+                self:ShowBlacklistImportDialog(sender, self.pendingBlacklistShares[sender])
+            else
+                self:Print("Received blacklist share from " .. sender .. " but no entries were received.")
+            end
         end
     end
 end
@@ -495,6 +600,7 @@ function KDT:ShowBlacklistImportDialog(sender, entries)
             if not self.DB.blacklist[name] then
                 self.DB.blacklist[name] = {
                     reason = data.reason,
+                    class = data.class,  -- Include class info
                     date = date("%Y-%m-%d"),
                     sharedBy = data.sharedBy,
                 }

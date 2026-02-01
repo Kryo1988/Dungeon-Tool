@@ -32,8 +32,8 @@ function KDT:CreateTimerElements(f)
     
     e.infoText2 = e.infoBox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     e.infoText2:SetPoint("TOP", e.infoText, "BOTTOM", 0, -4)
-    e.infoText2:SetText("Right-click the timer to access options")
-    e.infoText2:SetTextColor(0.5, 0.5, 0.5)
+    e.infoText2:SetText("Click the |cFFFFD100gear icon|r on the timer to open settings")
+    e.infoText2:SetTextColor(0.6, 0.6, 0.6)
     
     -- Settings Box
     e.settingsBox = CreateFrame("Frame", nil, c, "BackdropTemplate")
