@@ -2,7 +2,7 @@
 ## Title: |cFFFF0000Kryos|r Dungeon Tool
 ## Notes: M+ Group Check, Timer, BiS Gear Editor, Blacklist & Teleports
 ## Author: Kryos
-## Version: 1.8.14
+## Version: 1.8.16
 ## SavedVariables: KryosDungeonToolDB
 ## IconTexture: Interface\Icons\inv_relics_hourglass
 

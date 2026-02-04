@@ -202,21 +202,7 @@ local function CreateEditDialog()
     
     local gemHelp = editFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     gemHelp:SetPoint("LEFT", gemBox, "RIGHT", 10, 0)
-    gemHelp:SetText("|cFF888888comma separated|r")
-    
-    yPos = yPos - 35
-    
-    -- Popularity
-    local popLabel = editFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    popLabel:SetPoint("TOPLEFT", 20, yPos)
-    popLabel:SetText("Popularity %:")
-    popLabel:SetTextColor(0.7, 0.7, 0.7)
-    
-    local popBox = CreateFrame("EditBox", nil, editFrame, "InputBoxTemplate")
-    popBox:SetSize(80, 22)
-    popBox:SetPoint("TOPLEFT", 120, yPos + 3)
-    popBox:SetAutoFocus(false)
-    editFrame.popBox = popBox
+    gemHelp:SetText("|cFF888888kommagetrennt|r")
     
     -- Status text
     local status = editFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -274,7 +260,6 @@ local function CreateEditDialog()
             name = editFrame.nameBox:GetText() or "Unknown",
             source = editFrame.selectedSource or "RAID",
             detail = editFrame.detailBox:GetText() or "",
-            popularity = tonumber(editFrame.popBox:GetText()) or 0,
             enchant = tonumber(editFrame.enchantBox:GetText()) or nil,
             gems = #gems > 0 and gems or nil,
         }
@@ -343,7 +328,6 @@ local function OpenEditDialog(slot, itemData)
     dialog.nameBox:SetText(itemData.name or "")
     dialog.detailBox:SetText(itemData.sourceDetail or itemData.detail or "")
     dialog.enchantBox:SetText(tostring(itemData.enchant or 0))
-    dialog.popBox:SetText(tostring(itemData.popularity or 0))
     
     -- Gems
     local gemStr = ""
@@ -434,7 +418,11 @@ function KDT:SetupBisTab(f)
     -- Button row
     e.refreshBtn = self:CreateButton(c, "Refresh", 80, 22)
     e.refreshBtn:SetPoint("BOTTOMLEFT", 10, 12)
-    e.refreshBtn:SetScript("OnClick", function() f:RefreshBis() end)
+    e.refreshBtn:SetScript("OnClick", function() 
+        if KDT.mainFrame and KDT.mainFrame.RefreshBis then
+            KDT.mainFrame:RefreshBis()
+        end
+    end)
     
     e.resetAllBtn = self:CreateButton(c, "Reset All", 80, 22)
     e.resetAllBtn:SetPoint("LEFT", e.refreshBtn, "RIGHT", 10, 0)
@@ -442,22 +430,33 @@ function KDT:SetupBisTab(f)
         StaticPopup_Show("KDT_RESET_BIS_CONFIRM")
     end)
     
-    -- Confirmation popup
-    StaticPopupDialogs["KDT_RESET_BIS_CONFIRM"] = {
-        text = "Reset all BiS data for this spec?",
-        button1 = "Ja",
-        button2 = "Nein",
-        OnAccept = function()
-            local specID = KDT:GetPlayerSpecID()
-            KDT:ResetAllCustomBis(specID)
-            KDT:Print("BiS data reset for " .. KDT:GetSpecName(specID))
-            if f.RefreshBis then f:RefreshBis() end
-        end,
-        timeout = 0,
-        whileDead = true,
-        hideOnEscape = true,
-    }
+    -- Import/Export button
+    e.importExportBtn = self:CreateButton(c, "Import/Export", 100, 22)
+    e.importExportBtn:SetPoint("LEFT", e.resetAllBtn, "RIGHT", 10, 0)
+    e.importExportBtn:SetScript("OnClick", function()
+        KDT:ShowBisImportExportDialog()
+    end)
 end
+
+-- Confirmation popup (defined outside function to avoid redefinition)
+StaticPopupDialogs["KDT_RESET_BIS_CONFIRM"] = {
+    text = "Alle BiS-Anpassungen für diese Spezialisierung zurücksetzen?",
+    button1 = "Ja",
+    button2 = "Nein",
+    OnAccept = function()
+        local specID = KDT:GetPlayerSpecID()
+        if specID and specID > 0 then
+            KDT:ResetAllCustomBis(specID)
+            KDT:Print("BiS-Daten zurückgesetzt für " .. KDT:GetSpecName(specID))
+            if KDT.mainFrame and KDT.mainFrame.RefreshBis then
+                KDT.mainFrame:RefreshBis()
+            end
+        end
+    end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+}
 
 -- Refresh BiS display
 function KDT:SetupBisRefresh(f)
@@ -473,9 +472,16 @@ function KDT:SetupBisRefresh(f)
         end
         wipe(self.bisRows)
         
-        -- Get player info
+        -- Get player info with nil checks
         local _, playerClass = UnitClass("player")
         local specID = KDT:GetPlayerSpecID()
+        
+        -- Check if spec is available yet
+        if not specID or specID == 0 then
+            e.specInfo:SetText("|cFFFF8800Bitte wähle eine Spezialisierung|r")
+            return
+        end
+        
         local specName = KDT:GetSpecName(specID)
         
         -- Update spec info text
@@ -583,17 +589,9 @@ function KDT:SetupBisRefresh(f)
                     enhanceText:SetText("|cFF444444-|r")
                 end
                 
-                -- Popularity (right column, top)
-                local popText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                popText:SetPoint("TOPRIGHT", row, "TOPRIGHT", -10, -6)
-                popText:SetJustifyH("RIGHT")
-                local pop = item.popularity or 0
-                local popColor = pop >= 50 and "|cFF00FF00" or (pop >= 25 and "|cFFFFFF00" or "|cFFFF8800")
-                popText:SetText(popColor .. string.format("%.1f%%", pop) .. "|r")
-                
-                -- Stats (right column, below pop)
-                local statsText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                statsText:SetPoint("TOPRIGHT", popText, "BOTTOMRIGHT", 0, -2)
+                -- Stats (right column)
+                local statsText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                statsText:SetPoint("RIGHT", row, "RIGHT", -10, 0)
                 statsText:SetJustifyH("RIGHT")
                 statsText:SetText("|cFFAAFF00" .. (item.stats or "") .. "|r")
                 
@@ -611,20 +609,19 @@ function KDT:SetupBisRefresh(f)
                         -- Add KDT info below
                         GameTooltip:AddLine(" ")
                         GameTooltip:AddLine("|cFF00D4FF--- KDT Info ---|r")
-                        GameTooltip:AddDoubleLine("Popularity:", string.format("%.1f%%", data.popularity or 0), 0.7, 0.7, 0.7, 1, 1, 1)
                         if data.enchant and data.enchant > 0 then
                             local eName = KDT:GetEnchantName(data.enchant) or "Unknown"
-                            GameTooltip:AddDoubleLine("Best Enchant:", eName, 0.7, 0.7, 0.7, 0, 1, 0)
+                            GameTooltip:AddDoubleLine("Bestes Enchant:", eName, 0.7, 0.7, 0.7, 0, 1, 0)
                         end
                         if data.gems and #data.gems > 0 then
                             local gemNames = {}
                             for _, gid in ipairs(data.gems) do
                                 table.insert(gemNames, KDT:GetGemName(gid) or "Unknown")
                             end
-                            GameTooltip:AddDoubleLine("Best Gems:", table.concat(gemNames, ", "), 0.7, 0.7, 0.7, 0, 0.83, 1)
+                            GameTooltip:AddDoubleLine("Beste Gems:", table.concat(gemNames, ", "), 0.7, 0.7, 0.7, 0, 0.83, 1)
                         end
                         GameTooltip:AddLine(" ")
-                        GameTooltip:AddLine("|cFFFFFF00Right-click to edit|r")
+                        GameTooltip:AddLine("|cFFFFFF00Rechtsklick zum Bearbeiten|r")
                     else
                         -- Fallback: Show KDT data only
                         GameTooltip:ClearLines()
@@ -639,8 +636,7 @@ function KDT:SetupBisRefresh(f)
                             GameTooltip:AddLine("Stats: " .. data.stats, 0.6, 0.8, 1)
                         end
                         GameTooltip:AddLine(" ")
-                        GameTooltip:AddDoubleLine("Popularity:", string.format("%.1f%%", data.popularity or 0), 0.7, 0.7, 0.7, 1, 1, 1)
-                        GameTooltip:AddLine("|cFFFFFF00Right-click to edit|r")
+                        GameTooltip:AddLine("|cFFFFFF00Rechtsklick zum Bearbeiten|r")
                     end
                     GameTooltip:Show()
                 end)
@@ -706,9 +702,12 @@ function KDT:GetBisForSpec(specID)
     -- Get base data
     local baseData = {}
     
-    -- Check default data first
-    if KDT.BIS_DATA and KDT.BIS_DATA[specID] then
-        for slot, item in pairs(KDT.BIS_DATA[specID]) do
+    -- Map Hero Talent specs to their base spec for BiS data lookup
+    local lookupSpecID = self:GetBaseSpecID(specID)
+    
+    -- Check default data first (use lookupSpecID for data, but specID for custom)
+    if KDT.BIS_DATA and KDT.BIS_DATA[lookupSpecID] then
+        for slot, item in pairs(KDT.BIS_DATA[lookupSpecID]) do
             if item then
                 baseData[slot] = {}
                 for k, v in pairs(item) do
@@ -727,21 +726,241 @@ function KDT:GetBisForSpec(specID)
         end
     end
     
-    -- Override with custom data
-    if KryosDungeonToolDB and KryosDungeonToolDB.customBis and KryosDungeonToolDB.customBis[specID] then
-        for slot, customItem in pairs(KryosDungeonToolDB.customBis[specID]) do
-            baseData[slot] = {
-                name = customItem.name,
-                itemID = customItem.id or customItem.itemID or 0,
-                source = customItem.source or "RAID",
-                sourceDetail = customItem.detail or customItem.sourceDetail or "",
-                stats = customItem.stats or "",
-                popularity = customItem.popularity or 0,
-                enchant = customItem.enchant,
-                gems = customItem.gems,
-            }
+    -- Override with custom data (check both original specID and base specID)
+    local customSpecID = specID
+    if KryosDungeonToolDB and KryosDungeonToolDB.customBis then
+        -- First check custom data for the actual specID
+        if KryosDungeonToolDB.customBis[specID] then
+            customSpecID = specID
+        -- Then fallback to base spec custom data
+        elseif lookupSpecID ~= specID and KryosDungeonToolDB.customBis[lookupSpecID] then
+            customSpecID = lookupSpecID
+        end
+        
+        if KryosDungeonToolDB.customBis[customSpecID] then
+            for slot, customItem in pairs(KryosDungeonToolDB.customBis[customSpecID]) do
+                baseData[slot] = {
+                    name = customItem.name,
+                    itemID = customItem.id or customItem.itemID or 0,
+                    source = customItem.source or "RAID",
+                    sourceDetail = customItem.detail or customItem.sourceDetail or "",
+                    stats = customItem.stats or "",
+                    enchant = customItem.enchant,
+                    gems = customItem.gems,
+                }
+            end
         end
     end
     
     return baseData
+end
+
+-- =============================================================================
+-- IMPORT/EXPORT DIALOG
+-- =============================================================================
+
+local importExportFrame = nil
+
+function KDT:ShowBisImportExportDialog()
+    if importExportFrame then
+        importExportFrame:Show()
+        -- Update export text for current spec
+        local specID = self:GetPlayerSpecID()
+        if specID and specID > 0 then
+            local exportStr = self:ExportBisList(specID)
+            importExportFrame.exportBox:SetText(exportStr or "")
+        end
+        return
+    end
+    
+    -- Create frame
+    importExportFrame = CreateFrame("Frame", "KryosDTImportExportFrame", UIParent, "BackdropTemplate")
+    importExportFrame:SetSize(500, 400)
+    importExportFrame:SetPoint("CENTER")
+    importExportFrame:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        edgeSize = 2,
+    })
+    importExportFrame:SetBackdropColor(0.1, 0.1, 0.12, 0.98)
+    importExportFrame:SetBackdropBorderColor(0.3, 0.6, 1, 1)
+    importExportFrame:SetFrameStrata("DIALOG")
+    importExportFrame:EnableMouse(true)
+    importExportFrame:SetMovable(true)
+    importExportFrame:RegisterForDrag("LeftButton")
+    importExportFrame:SetScript("OnDragStart", function(self) self:StartMoving() end)
+    importExportFrame:SetScript("OnDragStop", function(self) self:StopMovingOrSizing() end)
+    
+    -- Title
+    local title = importExportFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    title:SetPoint("TOP", 0, -15)
+    title:SetText("|cFF00D4FFBiS Import / Export|r")
+    
+    -- Close button
+    local closeBtn = CreateFrame("Button", nil, importExportFrame, "UIPanelCloseButton")
+    closeBtn:SetPoint("TOPRIGHT", -5, -5)
+    closeBtn:SetScript("OnClick", function() importExportFrame:Hide() end)
+    
+    -- Export section
+    local exportLabel = importExportFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    exportLabel:SetPoint("TOPLEFT", 20, -50)
+    exportLabel:SetText("|cFF00FF00Export|r - Kopiere diesen String:")
+    
+    local exportBox = CreateFrame("EditBox", nil, importExportFrame, "InputBoxTemplate")
+    exportBox:SetSize(460, 22)
+    exportBox:SetPoint("TOPLEFT", 20, -70)
+    exportBox:SetAutoFocus(false)
+    exportBox:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
+    importExportFrame.exportBox = exportBox
+    
+    -- Import section
+    local importLabel = importExportFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    importLabel:SetPoint("TOPLEFT", 20, -110)
+    importLabel:SetText("|cFFFFFF00Import|r - Füge einen String ein:")
+    
+    local importScroll = CreateFrame("ScrollFrame", nil, importExportFrame, "UIPanelScrollFrameTemplate")
+    importScroll:SetPoint("TOPLEFT", 20, -130)
+    importScroll:SetSize(440, 150)
+    
+    local importBox = CreateFrame("EditBox", nil, importScroll)
+    importBox:SetSize(440, 150)
+    importBox:SetMultiLine(true)
+    importBox:SetAutoFocus(false)
+    importBox:SetFontObject("GameFontHighlight")
+    importBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    importScroll:SetScrollChild(importBox)
+    importExportFrame.importBox = importBox
+    
+    -- Import background
+    local importBg = importExportFrame:CreateTexture(nil, "BACKGROUND")
+    importBg:SetPoint("TOPLEFT", importScroll, -5, 5)
+    importBg:SetPoint("BOTTOMRIGHT", importScroll, 25, -5)
+    importBg:SetColorTexture(0.05, 0.05, 0.07, 1)
+    
+    -- Status text
+    local status = importExportFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    status:SetPoint("BOTTOMLEFT", 20, 55)
+    status:SetWidth(400)
+    status:SetJustifyH("LEFT")
+    importExportFrame.status = status
+    
+    -- Import button
+    local importBtn = KDT:CreateButton(importExportFrame, "Importieren", 100, 26)
+    importBtn:SetPoint("BOTTOMRIGHT", -20, 15)
+    importBtn:SetScript("OnClick", function()
+        local text = importBox:GetText()
+        if text and text ~= "" then
+            local success, result = KDT:ImportBisList(text)
+            if success then
+                importExportFrame.status:SetText("|cFF00FF00Import erfolgreich für Spec " .. result .. "!|r")
+                if KDT.mainFrame and KDT.mainFrame.RefreshBis then
+                    KDT.mainFrame:RefreshBis()
+                end
+            else
+                importExportFrame.status:SetText("|cFFFF0000Fehler: " .. (result or "Unbekannt") .. "|r")
+            end
+        else
+            importExportFrame.status:SetText("|cFFFF8800Bitte Import-String einfügen|r")
+        end
+    end)
+    
+    -- Clear button
+    local clearBtn = KDT:CreateButton(importExportFrame, "Leeren", 80, 26)
+    clearBtn:SetPoint("RIGHT", importBtn, "LEFT", -10, 0)
+    clearBtn:SetScript("OnClick", function()
+        importBox:SetText("")
+        importExportFrame.status:SetText("")
+    end)
+    
+    -- Populate export on show
+    local specID = self:GetPlayerSpecID()
+    if specID and specID > 0 then
+        local exportStr = self:ExportBisList(specID)
+        exportBox:SetText(exportStr or "Keine Daten")
+    end
+    
+    importExportFrame:Show()
+end
+
+-- Export BiS list to string
+function KDT:ExportBisList(specID)
+    local data = self:GetBisForSpec(specID)
+    if not data then return nil end
+    
+    -- Format: KDT1!specID!slot:itemID:source:enchant:gem1,gem2|slot:...
+    local parts = {"KDT1", tostring(specID)}
+    
+    for _, slot in ipairs(KDT.SLOT_ORDER) do
+        local item = data[slot]
+        if item then
+            local itemID = item.itemID or 0
+            local source = item.source or "RAID"
+            local enchant = item.enchant or 0
+            local gems = ""
+            if item.gems and #item.gems > 0 then
+                gems = table.concat(item.gems, ",")
+            end
+            table.insert(parts, string.format("%s:%d:%s:%d:%s", slot, itemID, source, enchant, gems))
+        end
+    end
+    
+    return table.concat(parts, "!")
+end
+
+-- Import BiS list from string
+function KDT:ImportBisList(str)
+    if not str or str == "" then
+        return false, "Leerer String"
+    end
+    
+    local parts = {strsplit("!", str)}
+    if #parts < 3 then
+        return false, "Ungültiges Format"
+    end
+    
+    if parts[1] ~= "KDT1" then
+        return false, "Unbekannte Version"
+    end
+    
+    local specID = tonumber(parts[2])
+    if not specID or specID <= 0 then
+        return false, "Ungültige Spec-ID"
+    end
+    
+    -- Initialize storage
+    if not KryosDungeonToolDB then KryosDungeonToolDB = {} end
+    if not KryosDungeonToolDB.customBis then KryosDungeonToolDB.customBis = {} end
+    KryosDungeonToolDB.customBis[specID] = {}
+    
+    -- Parse slots
+    for i = 3, #parts do
+        local slotData = {strsplit(":", parts[i])}
+        if #slotData >= 2 then
+            local slot = slotData[1]
+            local itemID = tonumber(slotData[2]) or 0
+            local source = slotData[3] or "RAID"
+            local enchant = tonumber(slotData[4]) or nil
+            local gems = nil
+            
+            if slotData[5] and slotData[5] ~= "" then
+                gems = {}
+                for gemID in slotData[5]:gmatch("(%d+)") do
+                    table.insert(gems, tonumber(gemID))
+                end
+            end
+            
+            if enchant == 0 then enchant = nil end
+            
+            KryosDungeonToolDB.customBis[specID][slot] = {
+                itemID = itemID,
+                id = itemID,
+                name = "Imported Item",
+                source = source,
+                enchant = enchant,
+                gems = gems,
+            }
+        end
+    end
+    
+    return true, specID
 end

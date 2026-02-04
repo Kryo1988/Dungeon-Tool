@@ -1,5 +1,101 @@
 # KryosDungeonTool Changelog
 
+## Version 1.8.16 (2026-02-04)
+
+### BiS Data Update
+- **Devourer BiS Data**: Added complete BiS gear list for Demon Hunter Devourer spec
+  - Full Charhound's Vicious tier set from M+
+  - Crafted pieces: Amulet of Earthen Craftsmanship, Rune-Branded Waistband
+  - Raid pieces: Reshii Wraps, Interloper's Reinforced Sandals, Signet of Collapsing Stars
+  - Trinkets: Astral Antenna, Chant of Winged Grace
+  - Weapons: Everforged Warglaive + Collapsing Phaseblades
+
+---
+
+## Version 1.8.15 (2026-02-04)
+
+### New Feature
+- **Devourer Spec Support**: Added support for the new 3rd Demon Hunter spec introduced in Midnight
+  - SpecID 1480 (Devourer) is now recognized as a full spec, not a Hero Talent
+  - Devourer is an Intellect-based caster DPS spec (different from Havoc/Vengeance)
+  - BiS data placeholder added - use right-click to edit or wait for Archon.gg data
+
+### Technical
+- Updated `SPEC_NAMES` to include Devourer (1480)
+- Updated `ARCHON_SPEC_SLUGS` for Devourer
+- Added Devourer BiS data template (needs population from Archon.gg)
+- Removed incorrect Hero Talent mappings (1480 is not a Hero Talent)
+
+---
+
+## Version 1.8.14 (2026-02-01)
+
+### Bugfixes
+- **Dropdown Height Fix**: Class dropdown now has exact same height (20px) as other input fields
+- **Dropdown Styling**: Uses same font and border colors as input boxes for consistent look
+- **Key Sharing Fix**: Keys from other players are now correctly stored and displayed
+  - Keys are now saved in both `groupKeys` and `receivedKeys` for compatibility
+  - Keys should now appear for all group members using KDT
+
+### Notes
+- Group Check features (RIO, iLvl, Scrollbar, Abandon Button) were already implemented in previous versions
+- Teleport announce checkbox was already present in M+ Teleports tab
+
+---
+
+## Version 1.8.13 (2026-02-01)
+
+### Bugfixes
+- **Tab Overlap Fixed**: Group Check content no longer shows through when switching to Blacklist tab
+  - memberContainer is now explicitly hidden during tab switches
+- **Dropdown Arrow**: Changed from "▼" (Unicode) to "v" for better font compatibility
+
+---
+
+## Version 1.8.12 (2026-02-01)
+
+### Blacklist Improvements
+
+**Right-Click Menu Enhancements:**
+- **Automatic Class Detection**: When adding a player via right-click, their class is automatically detected and saved
+- **Server Name Saved**: Full player name with server is now stored (e.g., "Kryos-Blackmoore")
+
+**Custom Class Dropdown:**
+- New dropdown design matching the addon's dark theme
+- Class colors displayed in dropdown menu
+- Color indicator bar for each class option
+
+**Server Support:**
+- Blacklist entries now store full name with server
+- Intelligent matching: checks both with and without server for backwards compatibility
+- Display shows server name in gray after player name
+- Group join check uses full name with server for accurate matching
+
+---
+
+## Version 1.8.11 (2026-02-01)
+
+### Blacklist Overhaul
+
+**New Features:**
+- **Class Display**: Players shown with class color and class name
+- **Class Dropdown**: Select class when manually adding players
+- **Search Function**: Filter blacklist by name, reason, or class
+- **Invisible Scrollbar**: Mouse wheel scrolling without visible scrollbar
+- **Entry Counter**: Shows filtered/total count
+
+**UI Changes:**
+- Removed "Share List" button from UI (command still works via `/kdt share`)
+- Removed `/kdt share` from `/kdt help` output
+
+**Bugfixes:**
+- **Share Function Fixed**: Added CHAT_MSG_ADDON event handler
+  - Recipients now correctly receive shared blacklist entries
+  - Import dialog appears as expected
+- **Class Info Shared**: When sharing blacklist, class information is included
+
+---
+
 ## Version 1.8.10 (2026-01-31)
 
 ### M+ Timer Improvements
