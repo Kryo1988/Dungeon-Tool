@@ -62,11 +62,11 @@ KDT.DUNGEON_NAMES = {
 
 -- ==================== SHORT NAMES ====================
 KDT.DUNGEON_SHORT_NAMES = {
-    [503] = "AK",
-    [505] = "DAWN",
+    [503] = "ARAK",
+    [505] = "DB",
     [542] = "EDA",
     [378] = "HOA",
-    [525] = "FLOOD",
+    [525] = "FG",
     [499] = "PSF",
     [392] = "GMBT",
     [391] = "STRT",
@@ -80,8 +80,8 @@ KDT.DUNGEON_SHORT_NAMES = {
     [2649] = "PSF",
     [2688] = "EDA",
     [2287] = "HOA",
-    [2773] = "FLOOD",
-    [2660] = "AK",
+    [2773] = "FG",
+    [2660] = "ARAK",
     [2662] = "DB",
     [2441] = "STRT",  -- Tazavesh: Streets of Wonder
 }
@@ -105,11 +105,11 @@ KDT.TELEPORT_DATA = {
     {
         category = "TWW Season 3",
         dungeons = {
-            {name = "Ara-Kara", short = "AK", spellID = 445417, icon = "Interface\\Icons\\inv_achievement_dungeon_arak-ara"},
-            {name = "Dawnbreaker", short = "DAWN", spellID = 445414, icon = "Interface\\Icons\\inv_achievement_dungeon_dawnbreaker"},
+            {name = "Ara-Kara", short = "ARAK", spellID = 445417, icon = "Interface\\Icons\\inv_achievement_dungeon_arak-ara"},
+            {name = "Dawnbreaker", short = "DB", spellID = 445414, icon = "Interface\\Icons\\inv_achievement_dungeon_dawnbreaker"},
             {name = "Eco-Dome", short = "EDA", spellID = 1237215, icon = "Interface\\Icons\\inv_112_achievement_dungeon_ecodome"},
             {name = "Halls of Atonement", short = "HOA", spellID = 354465, icon = "Interface\\Icons\\achievement_dungeon_hallsofattonement"},
-            {name = "Operation: Floodgate", short = "FLOOD", spellID = 1216786, icon = "Interface\\Icons\\inv_achievement_dungeon_waterworks"},
+            {name = "Operation: Floodgate", short = "FG", spellID = 1216786, icon = "Interface\\Icons\\inv_achievement_dungeon_waterworks"},
             {name = "Priory of the Sacred Flame", short = "PSF", spellID = 445444, icon = "Interface\\Icons\\inv_achievement_dungeon_prioryofthesacredflame"},
             {name = "Tazavesh: Gambit", short = "GMBT", spellID = 367416, icon = "Interface\\Icons\\achievement_dungeon_brokerdungeon"},
             {name = "Tazavesh: Streets", short = "STRT", spellID = 367416, icon = "Interface\\Icons\\Achievement_dungeon_theotherside_dealergexa"},

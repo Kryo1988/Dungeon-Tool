@@ -31,12 +31,17 @@ EventUtil.ContinueOnAddOnLoaded(addonName, function()
     KDT:CreateTimerElements(KDT.MainFrame)
     KDT:CreateBlacklistElements(KDT.MainFrame)
     KDT:SetupBisTab(KDT.MainFrame)
+    KDT:CreateMeterElements(KDT.MainFrame)
     KDT:SetupTabSwitching(KDT.MainFrame)
     KDT:SetupGroupRefresh(KDT.MainFrame)
     KDT:SetupBlacklistRefresh(KDT.MainFrame)
     KDT:SetupTeleportRefresh(KDT.MainFrame)
     KDT:SetupTimerRefresh(KDT.MainFrame)
     KDT:SetupBisRefresh(KDT.MainFrame)
+    KDT:SetupMeterRefresh(KDT.MainFrame)
+    
+    -- Meter module auto-initializes via C_Timer.After(5) at end of Meter.lua
+    -- This delay ensures we're out of protected context
     
     -- Initially hide all elements except group
     for _, el in pairs(KDT.MainFrame.blacklistElements) do
@@ -49,6 +54,9 @@ EventUtil.ContinueOnAddOnLoaded(addonName, function()
         if el.Hide then el:Hide() end
     end
     for _, el in pairs(KDT.MainFrame.bisElements) do
+        if el.Hide then el:Hide() end
+    end
+    for _, el in pairs(KDT.MainFrame.meterElements) do
         if el.Hide then el:Hide() end
     end
     

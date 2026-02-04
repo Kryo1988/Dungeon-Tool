@@ -1,18 +1,70 @@
 -- Kryos Dungeon Tool
--- UI/GroupTab.lua - Group Check tab UI with RIO, iLvl, hidden scrollbar
+-- UI/GroupTab.lua - Group Check tab UI with modern panel design
+-- Inspired by Raider.IO party view - Version 1.8.17
 
 local addonName, KDT = ...
+
+-- ==================== SEASON 3 DUNGEON DATA ====================
+-- TWW Season 3 (Patch 11.2 - Ghosts of K'aresh)
+local SEASON_DUNGEONS = {
+    { short = "EDA", name = "Eco-Dome", mapID = 542, icon = "Interface\\Icons\\inv_112_achievement_dungeon_ecodome" },
+    { short = "ARAK", name = "Ara-Kara", mapID = 503, icon = "Interface\\Icons\\inv_achievement_dungeon_arak-ara" },
+    { short = "DB", name = "Dawnbreaker", mapID = 505, icon = "Interface\\Icons\\inv_achievement_dungeon_dawnbreaker" },
+    { short = "PSF", name = "Priory", mapID = 499, icon = "Interface\\Icons\\inv_achievement_dungeon_prioryofthesacredflame" },
+    { short = "FG", name = "Floodgate", mapID = 525, icon = "Interface\\Icons\\inv_achievement_dungeon_waterworks" },
+    { short = "STRT", name = "Streets", mapID = 391, icon = "Interface\\Icons\\Achievement_dungeon_theotherside_dealergexa" },
+    { short = "GMBT", name = "Gambit", mapID = 392, icon = "Interface\\Icons\\achievement_dungeon_brokerdungeon" },
+    { short = "HOA", name = "Halls", mapID = 378, icon = "Interface\\Icons\\achievement_dungeon_hallsofattonement" },
+}
+
+-- Class icon coordinates in Interface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES
+local CLASS_ICON_COORDS = {
+    WARRIOR = {0, 0.25, 0, 0.25},
+    MAGE = {0.25, 0.5, 0, 0.25},
+    ROGUE = {0.5, 0.75, 0, 0.25},
+    DRUID = {0.75, 1, 0, 0.25},
+    HUNTER = {0, 0.25, 0.25, 0.5},
+    SHAMAN = {0.25, 0.5, 0.25, 0.5},
+    PRIEST = {0.5, 0.75, 0.25, 0.5},
+    WARLOCK = {0.75, 1, 0.25, 0.5},
+    PALADIN = {0, 0.25, 0.5, 0.75},
+    DEATHKNIGHT = {0.25, 0.5, 0.5, 0.75},
+    MONK = {0.5, 0.75, 0.5, 0.75},
+    DEMONHUNTER = {0.75, 1, 0.5, 0.75},
+    EVOKER = {0, 0.25, 0.75, 1},
+}
+
+-- Get RIO color based on score
+local function GetRIOColor(score)
+    if not score or score == 0 then return 0.5, 0.5, 0.5 end
+    if score >= 3500 then return 1, 0.5, 0 end        -- Orange (Legendary)
+    if score >= 3000 then return 0.64, 0.21, 0.93 end -- Purple
+    if score >= 2500 then return 0.0, 0.44, 0.87 end  -- Blue
+    if score >= 2000 then return 0.12, 1, 0 end       -- Green
+    if score >= 1500 then return 1, 1, 1 end          -- White
+    return 0.62, 0.62, 0.62                            -- Gray
+end
+
+-- Get key level color
+local function GetKeyLevelColor(level)
+    if not level or level == 0 then return 0.4, 0.4, 0.4 end
+    if level >= 15 then return 1, 0.5, 0 end        -- Orange
+    if level >= 12 then return 0.64, 0.21, 0.93 end -- Purple
+    if level >= 10 then return 0.0, 0.44, 0.87 end  -- Blue
+    if level >= 7 then return 0.12, 1, 0 end        -- Green
+    return 1, 1, 1                                    -- White
+end
 
 -- ==================== GROUP TAB ELEMENTS ====================
 function KDT:CreateGroupElements(f)
     local e = f.groupElements
     local c = f.content
     
-    -- Overview Box
+    -- Overview Box (compact version)
     e.box = CreateFrame("Frame", nil, c, "BackdropTemplate")
     e.box:SetPoint("TOPLEFT", 10, -5)
     e.box:SetPoint("TOPRIGHT", -10, -5)
-    e.box:SetHeight(130)
+    e.box:SetHeight(70)
     e.box:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8X8",
         edgeFile = "Interface\\Buttons\\WHITE8X8",
@@ -21,31 +73,23 @@ function KDT:CreateGroupElements(f)
     e.box:SetBackdropColor(0.08, 0.08, 0.10, 0.95)
     e.box:SetBackdropBorderColor(0.2, 0.2, 0.25, 1)
     
-    e.title = e.box:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    e.title:SetPoint("TOPLEFT", 10, -8)
-    e.title:SetText("GROUP OVERVIEW")
-    e.title:SetTextColor(0.8, 0.8, 0.8)
-    
+    -- Left side: Role icons and utility info
     e.roleText = e.box:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    e.roleText:SetPoint("TOPLEFT", 10, -28)
+    e.roleText:SetPoint("TOPLEFT", 10, -10)
     
-    e.rezText = e.box:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    e.rezText:SetPoint("TOPLEFT", 10, -46)
-    
-    e.blText = e.box:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    e.blText:SetPoint("TOPLEFT", 10, -62)
-    
-    e.stackText = e.box:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    e.stackText:SetPoint("TOPLEFT", 10, -78)
+    e.utilText = e.box:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    e.utilText:SetPoint("TOPLEFT", 10, -30)
+    e.utilText:SetPoint("RIGHT", e.box, "CENTER", -20, 0)
+    e.utilText:SetJustifyH("LEFT")
     
     e.keyText = e.box:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    e.keyText:SetPoint("TOPLEFT", 10, -94)
-    e.keyText:SetPoint("RIGHT", -220, 0)
+    e.keyText:SetPoint("TOPLEFT", 10, -48)
+    e.keyText:SetPoint("RIGHT", e.box, "CENTER", -20, 0)
     e.keyText:SetJustifyH("LEFT")
     
-    -- Buttons column (right side)
-    e.readyBtn = self:CreateButton(e.box, "Ready Check", 95, 22)
-    e.readyBtn:SetPoint("TOPRIGHT", -110, -8)
+    -- Right side: Buttons (2x2 grid)
+    e.readyBtn = self:CreateButton(e.box, "Ready Check", 85, 22)
+    e.readyBtn:SetPoint("TOPRIGHT", -95, -10)
     e.readyBtn:SetBackdropColor(0.15, 0.45, 0.15, 1)
     e.readyBtn:SetScript("OnClick", function()
         if IsInGroup() then DoReadyCheck() end
@@ -53,22 +97,21 @@ function KDT:CreateGroupElements(f)
     e.readyBtn:SetScript("OnEnter", function(self) self:SetBackdropColor(0.2, 0.55, 0.2, 1) end)
     e.readyBtn:SetScript("OnLeave", function(self) self:SetBackdropColor(0.15, 0.45, 0.15, 1) end)
     
-    e.postBtn = self:CreateButton(e.box, "Post to Chat", 95, 22)
-    e.postBtn:SetPoint("TOPRIGHT", -10, -8)
+    e.postBtn = self:CreateButton(e.box, "Post Chat", 85, 22)
+    e.postBtn:SetPoint("TOPRIGHT", -5, -10)
     e.postBtn:SetBackdropColor(0.15, 0.35, 0.6, 1)
     e.postBtn:SetScript("OnClick", function() KDT:PostToChat() end)
     e.postBtn:SetScript("OnEnter", function(self) self:SetBackdropColor(0.2, 0.45, 0.7, 1) end)
     e.postBtn:SetScript("OnLeave", function(self) self:SetBackdropColor(0.15, 0.35, 0.6, 1) end)
     
-    e.cdBtn = self:CreateButton(e.box, "Countdown", 95, 22)
+    e.cdBtn = self:CreateButton(e.box, "Countdown", 85, 22)
     e.cdBtn:SetPoint("TOP", e.readyBtn, "BOTTOM", 0, -5)
     e.cdBtn:SetBackdropColor(0.5, 0.35, 0.1, 1)
     e.cdBtn:SetScript("OnClick", function() KDT:StartCountdown() end)
     e.cdBtn:SetScript("OnEnter", function(self) self:SetBackdropColor(0.6, 0.45, 0.15, 1) end)
     e.cdBtn:SetScript("OnLeave", function(self) self:SetBackdropColor(0.5, 0.35, 0.1, 1) end)
     
-    -- Abandon button (new)
-    e.abandonBtn = self:CreateButton(e.box, "Abandon Key", 95, 22)
+    e.abandonBtn = self:CreateButton(e.box, "Abandon", 85, 22)
     e.abandonBtn:SetPoint("TOP", e.postBtn, "BOTTOM", 0, -5)
     e.abandonBtn:SetBackdropColor(0.6, 0.15, 0.15, 1)
     e.abandonBtn:SetScript("OnClick", function()
@@ -77,7 +120,6 @@ function KDT:CreateGroupElements(f)
             button1 = "Yes",
             button2 = "No",
             OnAccept = function()
-                -- Use slash command for abandon
                 SlashCmdList["MYTHICPLUS"]("abandon")
                 KDT:Print("Keystone abandoned.")
             end,
@@ -90,68 +132,98 @@ function KDT:CreateGroupElements(f)
     e.abandonBtn:SetScript("OnEnter", function(self) self:SetBackdropColor(0.7, 0.2, 0.2, 1) end)
     e.abandonBtn:SetScript("OnLeave", function(self) self:SetBackdropColor(0.6, 0.15, 0.15, 1) end)
     
-    -- Countdown seconds input
-    e.secLabel = e.box:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    e.secLabel:SetPoint("TOP", e.cdBtn, "BOTTOM", -12, -5)
-    e.secLabel:SetText("Sec:")
-    e.secLabel:SetTextColor(0.5, 0.5, 0.5)
+    -- Hidden settings (loaded from DB)
+    e.secInput = CreateFrame("EditBox", nil, e.box)
+    e.secInput:SetSize(1, 1)
+    e.secInput:SetPoint("TOPLEFT", 0, 0)
+    e.secInput:SetAutoFocus(false)
+    e.secInput:Hide()
     
-    e.secInput = self:CreateInput(e.box, 30)
-    e.secInput:SetPoint("LEFT", e.secLabel, "RIGHT", 5, 0)
-    e.secInput:SetNumeric(true)
-    e.secInput:SetMaxLetters(2)
-    e.secInput:SetText("10")
-    e.secInput:SetScript("OnEnterPressed", function(self)
-        local v = math.max(1, math.min(60, tonumber(self:GetText()) or 10))
-        KDT.DB.settings.countdownSeconds = v
-        self:SetText(tostring(v))
-        self:ClearFocus()
-    end)
+    e.autoCheck = CreateFrame("CheckButton", nil, e.box)
+    e.autoCheck:SetSize(1, 1)
+    e.autoCheck:SetPoint("TOPLEFT", 0, 0)
+    e.autoCheck:Hide()
     
-    -- Auto-post checkbox (moved below abandon button)
-    e.autoCheck = CreateFrame("CheckButton", nil, e.box, "UICheckButtonTemplate")
-    e.autoCheck:SetSize(20, 20)
-    e.autoCheck:SetPoint("TOP", e.abandonBtn, "BOTTOM", -20, -3)
-    e.autoCheck.Text:SetText("Auto-Post")
-    e.autoCheck.Text:SetFontObject("GameFontNormalSmall")
-    e.autoCheck:SetScript("OnClick", function(self)
-        KDT.DB.settings.autoPost = self:GetChecked()
-    end)
+    -- ==================== PARTY PANEL (New Design) ====================
+    e.partyPanel = CreateFrame("Frame", nil, c, "BackdropTemplate")
+    e.partyPanel:SetPoint("TOPLEFT", e.box, "BOTTOMLEFT", 0, -8)
+    e.partyPanel:SetPoint("BOTTOMRIGHT", c, "BOTTOMRIGHT", -10, 40)
+    e.partyPanel:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        edgeSize = 1
+    })
+    e.partyPanel:SetBackdropColor(0.06, 0.06, 0.08, 0.98)
+    e.partyPanel:SetBackdropBorderColor(0.15, 0.15, 0.18, 1)
     
-    -- Members Section
-    e.membersTitle = c:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    e.membersTitle:SetPoint("TOPLEFT", e.box, "BOTTOMLEFT", 0, -8)
-    e.membersTitle:SetText("GROUP MEMBERS")
-    e.membersTitle:SetTextColor(0.8, 0.8, 0.8)
+    -- Party Title with shadow effect
+    local titleShadow = e.partyPanel:CreateFontString(nil, "ARTWORK")
+    titleShadow:SetFont("Fonts\\FRIZQT__.TTF", 22, "OUTLINE")
+    titleShadow:SetPoint("TOPLEFT", 17, -14)
+    titleShadow:SetText("Party")
+    titleShadow:SetTextColor(0, 0, 0, 0.5)
     
-    -- Column headers
-    e.headerFrame = CreateFrame("Frame", nil, c)
-    e.headerFrame:SetPoint("TOPLEFT", e.membersTitle, "BOTTOMLEFT", 0, -3)
-    e.headerFrame:SetPoint("RIGHT", c, "RIGHT", -10, 0)
-    e.headerFrame:SetHeight(16)
+    e.partyTitle = e.partyPanel:CreateFontString(nil, "OVERLAY")
+    e.partyTitle:SetFont("Fonts\\FRIZQT__.TTF", 22, "OUTLINE")
+    e.partyTitle:SetPoint("TOPLEFT", 15, -12)
+    e.partyTitle:SetText("Party")
+    e.partyTitle:SetTextColor(0.9, 0.9, 0.9)
     
-    local headers = {
-        {text = "", x = 5},      -- Role icon
-        {text = "Name", x = 28},
-        {text = "Class", x = 130},
-        {text = "Spec", x = 200},
-        {text = "iLvl", x = 280},
-        {text = "RIO", x = 325},
-        {text = "Key", x = 380},
-    }
+    -- Dungeon Icons Header
+    e.dungeonHeader = CreateFrame("Frame", nil, e.partyPanel)
+    e.dungeonHeader:SetPoint("TOPLEFT", 180, -5)
+    e.dungeonHeader:SetPoint("TOPRIGHT", -10, -5)
+    e.dungeonHeader:SetHeight(50)
     
-    for _, h in ipairs(headers) do
-        local headerText = e.headerFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        headerText:SetPoint("LEFT", h.x, 0)
-        headerText:SetText("|cFF666666" .. h.text .. "|r")
+    e.dungeonIcons = {}
+    local numDungeons = #SEASON_DUNGEONS
+    
+    for i, dungeon in ipairs(SEASON_DUNGEONS) do
+        local iconFrame = CreateFrame("Frame", nil, e.dungeonHeader)
+        iconFrame:SetSize(48, 48)
+        -- Distribute evenly across header
+        iconFrame:SetPoint("LEFT", e.dungeonHeader, "LEFT", (i-1) * 52, 0)
+        
+        -- Icon background (dark circle)
+        local iconBg = iconFrame:CreateTexture(nil, "BACKGROUND")
+        iconBg:SetSize(36, 36)
+        iconBg:SetPoint("TOP", 0, -2)
+        iconBg:SetTexture("Interface\\Buttons\\WHITE8X8")
+        iconBg:SetVertexColor(0.1, 0.1, 0.12, 1)
+        
+        local icon = iconFrame:CreateTexture(nil, "ARTWORK")
+        icon:SetSize(32, 32)
+        icon:SetPoint("CENTER", iconBg, "CENTER", 0, 0)
+        icon:SetTexture(dungeon.icon)
+        icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        
+        local label = iconFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        label:SetPoint("TOP", iconBg, "BOTTOM", 0, -1)
+        label:SetText(dungeon.short)
+        label:SetTextColor(0.6, 0.6, 0.6)
+        
+        -- Tooltip
+        iconFrame:EnableMouse(true)
+        iconFrame:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+            GameTooltip:SetText(dungeon.name, 1, 0.82, 0)
+            GameTooltip:Show()
+            icon:SetVertexColor(1.2, 1.2, 1.2)
+        end)
+        iconFrame:SetScript("OnLeave", function() 
+            GameTooltip:Hide() 
+            icon:SetVertexColor(1, 1, 1)
+        end)
+        
+        e.dungeonIcons[i] = iconFrame
     end
     
-    -- Scroll frame for member list (with hidden scrollbar)
-    e.memberScroll = CreateFrame("ScrollFrame", "KryosDTMemberScroll", c, "UIPanelScrollFrameTemplate")
-    e.memberScroll:SetPoint("TOPLEFT", e.headerFrame, "BOTTOMLEFT", 0, -2)
-    e.memberScroll:SetPoint("BOTTOMRIGHT", c, "BOTTOMRIGHT", -10, 45)
+    -- Member Cards Container (scrollable)
+    e.memberScroll = CreateFrame("ScrollFrame", "KryosDTMemberScroll", e.partyPanel, "UIPanelScrollFrameTemplate")
+    e.memberScroll:SetPoint("TOPLEFT", 5, -58)
+    e.memberScroll:SetPoint("BOTTOMRIGHT", -5, 5)
     
-    -- Hide the scrollbar but keep functionality
+    -- Hide scrollbar
     local scrollBar = e.memberScroll.ScrollBar or _G["KryosDTMemberScrollScrollBar"]
     if scrollBar then
         scrollBar:SetAlpha(0)
@@ -159,18 +231,13 @@ function KDT:CreateGroupElements(f)
         scrollBar:EnableMouse(false)
         if scrollBar.ScrollUpButton then scrollBar.ScrollUpButton:SetAlpha(0) scrollBar.ScrollUpButton:EnableMouse(false) end
         if scrollBar.ScrollDownButton then scrollBar.ScrollDownButton:SetAlpha(0) scrollBar.ScrollDownButton:EnableMouse(false) end
-        local upBtn = _G["KryosDTMemberScrollScrollBarScrollUpButton"]
-        local downBtn = _G["KryosDTMemberScrollScrollBarScrollDownButton"]
-        if upBtn then upBtn:SetAlpha(0) upBtn:EnableMouse(false) end
-        if downBtn then downBtn:SetAlpha(0) downBtn:EnableMouse(false) end
     end
     
-    -- Enable mouse wheel scrolling
     e.memberScroll:EnableMouseWheel(true)
     e.memberScroll:SetScript("OnMouseWheel", function(self, delta)
         local current = self:GetVerticalScroll()
         local maxScroll = self:GetVerticalScrollRange()
-        local newScroll = current - (delta * 34)
+        local newScroll = current - (delta * 80)
         newScroll = math.max(0, math.min(newScroll, maxScroll))
         self:SetVerticalScroll(newScroll)
     end)
@@ -179,70 +246,216 @@ function KDT:CreateGroupElements(f)
     e.memberContainer:SetSize(1, 1)
     e.memberScroll:SetScrollChild(e.memberContainer)
     
+    -- Bottom Buttons
     e.refreshBtn = self:CreateButton(c, "Refresh", 80, 22)
     e.refreshBtn:SetPoint("BOTTOMLEFT", 10, 12)
     e.refreshBtn:SetScript("OnClick", function() f:RefreshGroup() end)
+    
+    -- Compatibility elements (hidden)
+    e.membersTitle = c:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    e.membersTitle:SetText("")
+    e.membersTitle:Hide()
+    
+    e.headerFrame = CreateFrame("Frame", nil, c)
+    e.headerFrame:SetSize(1, 1)
+    e.headerFrame:Hide()
 end
 
--- ==================== REFRESH GROUP ====================
-function KDT:SetupGroupRefresh(f)
-    function f:RefreshGroup()
-        local e = self.groupElements
-        if not e then return end
-        
-        -- Clear existing member rows completely
-        if self.memberRows then
-            for _, row in ipairs(self.memberRows) do
-                if row then
-                    row:Hide()
-                    row:ClearAllPoints()
-                    row:SetParent(nil)
-                end
-            end
-        end
-        self.memberRows = {}
-        
-        -- Queue inspects for spec data and item level
-        local units = KDT:GetGroupUnits()
-        for _, unit in ipairs(units) do
-            if UnitExists(unit) and not UnitIsUnit(unit, "player") then
-                if UnitIsConnected(unit) and CanInspect(unit) then
-                    pcall(function()
-                        NotifyInspect(unit)
-                    end)
-                end
-            end
-        end
-        
-        -- Broadcast own key and request others
-        if KDT.BroadcastOwnKey then
-            pcall(function() KDT:BroadcastOwnKey() end)
-        end
-        if KDT.RequestGroupKeys then
-            pcall(function() KDT:RequestGroupKeys() end)
-        end
-        
-        -- Get data and create rows
-        self:CreateMemberRows()
-        
-        -- Schedule a delayed refresh to get spec/ilvl data (inspect takes time)
-        if not self.pendingSpecRefresh then
-            self.pendingSpecRefresh = true
-            C_Timer.After(1.5, function()
-                self.pendingSpecRefresh = false
-                if self:IsShown() and self.currentTab == "group" then
-                    self:CreateMemberRows()
-                end
-            end)
+-- ==================== CREATE MEMBER CARD ====================
+local function CreateMemberCard(parent, member, yOffset, scrollFrame, dungeonData)
+    local cardHeight = 70
+    local card = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+    card:SetHeight(cardHeight)
+    card:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, yOffset)
+    card:SetPoint("RIGHT", parent, "RIGHT", 0, 0)
+    card:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        edgeSize = 1
+    })
+    card:SetBackdropColor(0.08, 0.08, 0.10, 0.98)
+    card:SetBackdropBorderColor(0.18, 0.18, 0.22, 1)
+    
+    -- Class color accent on left
+    local classColors = KDT.CLASS_COLORS[member.class] or {1, 1, 1}
+    local accentBar = card:CreateTexture(nil, "OVERLAY")
+    accentBar:SetSize(4, cardHeight - 2)
+    accentBar:SetPoint("LEFT", 1, 0)
+    accentBar:SetTexture("Interface\\Buttons\\WHITE8X8")
+    accentBar:SetVertexColor(classColors[1], classColors[2], classColors[3], 1)
+    
+    -- Enable scrolling through cards
+    card:EnableMouseWheel(true)
+    card:SetScript("OnMouseWheel", function(self, delta)
+        local current = scrollFrame:GetVerticalScroll()
+        local maxScroll = scrollFrame:GetVerticalScrollRange()
+        local newScroll = current - (delta * 80)
+        newScroll = math.max(0, math.min(newScroll, maxScroll))
+        scrollFrame:SetVerticalScroll(newScroll)
+    end)
+    
+    -- ===== LEFT SECTION: Portrait + Info =====
+    
+    -- Portrait Background
+    local portraitBg = card:CreateTexture(nil, "BACKGROUND")
+    portraitBg:SetSize(48, 48)
+    portraitBg:SetPoint("LEFT", 10, 0)
+    portraitBg:SetTexture("Interface\\Buttons\\WHITE8X8")
+    portraitBg:SetVertexColor(0.1, 0.1, 0.12, 1)
+    
+    -- Player Portrait using PlayerModel
+    local portraitModel = CreateFrame("PlayerModel", nil, card)
+    portraitModel:SetSize(46, 46)
+    portraitModel:SetPoint("CENTER", portraitBg, "CENTER", 0, 0)
+    portraitModel:SetPortraitZoom(1)
+    
+    -- Try to set the unit
+    if member.unit and UnitExists(member.unit) then
+        portraitModel:SetUnit(member.unit)
+    else
+        -- Fallback: Show class icon texture instead
+        portraitModel:Hide()
+        local classIcon = card:CreateTexture(nil, "ARTWORK")
+        classIcon:SetSize(44, 44)
+        classIcon:SetPoint("CENTER", portraitBg, "CENTER", 0, 0)
+        classIcon:SetTexture("Interface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES")
+        local coords = CLASS_ICON_COORDS[member.class]
+        if coords then
+            classIcon:SetTexCoord(coords[1], coords[2], coords[3], coords[4])
         end
     end
     
-    -- Separate function to create member rows
-    function f:CreateMemberRows()
-        local e = self.groupElements
+    -- Name (class colored)
+    local nameText = card:CreateFontString(nil, "OVERLAY")
+    nameText:SetFont("Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
+    nameText:SetPoint("TOPLEFT", portraitBg, "TOPRIGHT", 8, -2)
+    nameText:SetText(member.name or "Unknown")
+    nameText:SetTextColor(classColors[1], classColors[2], classColors[3], 1)
+    
+    -- Spec + Class (gray, smaller)
+    local specText = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    specText:SetPoint("TOPLEFT", nameText, "BOTTOMLEFT", 0, -1)
+    local specStr = (member.spec or "Unknown") .. " " .. (KDT.CLASS_NAMES[member.class] or "")
+    specText:SetText(specStr)
+    specText:SetTextColor(0.5, 0.5, 0.5)
+    
+    -- Item Level + BR/BL (on left side, same line)
+    local ilvlText = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    ilvlText:SetPoint("TOPLEFT", specText, "BOTTOMLEFT", 0, -1)
+    
+    local ilvlParts = {}
+    -- iLvl
+    if member.ilvl and member.ilvl > 0 then
+        local ilvlColor = member.ilvl >= 639 and "FF8000" or
+                         member.ilvl >= 626 and "A335EE" or
+                         member.ilvl >= 610 and "0070DD" or
+                         "1EFF00"
+        table.insert(ilvlParts, "iLvl: |cFF" .. ilvlColor .. member.ilvl .. "|r")
+    else
+        table.insert(ilvlParts, "iLvl: |cFF666666-|r")
+    end
+    -- BR/BL
+    if KDT.BATTLE_REZ[member.class] then table.insert(ilvlParts, "|cFF00DD00BR|r") end
+    if KDT.BLOODLUST[member.class] then table.insert(ilvlParts, "|cFFFF8800BL|r") end
+    
+    ilvlText:SetText(table.concat(ilvlParts, " "))
+    
+    -- RIO Score (medium size, below iLvl)
+    local rioR, rioG, rioB = GetRIOColor(member.rio)
+    local rioText = card:CreateFontString(nil, "OVERLAY")
+    rioText:SetFont("Fonts\\FRIZQT__.TTF", 14, "OUTLINE")
+    rioText:SetPoint("TOPLEFT", ilvlText, "BOTTOMLEFT", 0, -2)
+    local rioDisplay = member.rio and member.rio > 0 and tostring(member.rio) or "0"
+    rioText:SetText(rioDisplay)
+    rioText:SetTextColor(rioR, rioG, rioB)
+    
+    -- Current Key (next to RIO, smaller)
+    local keyInfoText = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    keyInfoText:SetPoint("LEFT", rioText, "RIGHT", 8, 0)
+    if member.keystone then
+        local kR, kG, kB = GetKeyLevelColor(member.keystone.level)
+        local keyColor = string.format("%02X%02X%02X", kR*255, kG*255, kB*255)
+        local keyDisplay = member.keystone.text or ("+" .. member.keystone.level)
+        keyInfoText:SetText("|cFF" .. keyColor .. "(" .. keyDisplay .. ")|r")
+    else
+        keyInfoText:SetText("|cFF555555No Key|r")
+    end
+    
+    -- ===== RIGHT SECTION: Dungeon Best Keys (from RIO) =====
+    -- Must match header position: header starts at 180 from partyPanel, cards are in container at x=5
+    -- So dungeonStartX = 180 - 5 = 175, with 52px spacing and 24px center offset
+    local dungeonStartX = 175
+    local dungeonColWidth = 52
+    
+    -- Try to get RIO dungeon data
+    local rioDungeonData = nil
+    if RaiderIO and RaiderIO.GetProfile then
+        local rioProfile = nil
+        if member.unit then
+            rioProfile = RaiderIO.GetProfile(member.unit)
+        end
+        if rioProfile and rioProfile.mythicKeystoneProfile then
+            rioDungeonData = rioProfile.mythicKeystoneProfile
+        end
+    end
+    
+    for i, dungeon in ipairs(SEASON_DUNGEONS) do
+        -- Position matches header: (i-1) * 52 + 24 (center of 48px icon)
+        local colX = dungeonStartX + (i-1) * dungeonColWidth + 24
+        
+        local levelText = card:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        levelText:SetPoint("TOP", card, "TOPLEFT", colX, -28)
+        
+        -- Try to get best key level for this dungeon from RIO
+        local bestLevel = nil
+        
+        if rioDungeonData and rioDungeonData.sortedDungeons then
+            for _, dungeonInfo in ipairs(rioDungeonData.sortedDungeons) do
+                -- Match by dungeon short name
+                if dungeonInfo.dungeon and dungeonInfo.dungeon.shortName then
+                    local rioShort = dungeonInfo.dungeon.shortName:upper()
+                    if rioShort == dungeon.short:upper() or 
+                       rioShort:find(dungeon.short:upper()) then
+                        bestLevel = dungeonInfo.level
+                        break
+                    end
+                end
+            end
+        end
+        
+        if bestLevel and bestLevel > 0 then
+            local kR, kG, kB = GetKeyLevelColor(bestLevel)
+            levelText:SetText("|cFF" .. string.format("%02X%02X%02X", kR*255, kG*255, kB*255) .. 
+                "+" .. bestLevel .. "|r")
+        else
+            levelText:SetText("|cFF333333-|r")
+        end
+    end
+    
+    -- ===== BLACKLIST WARNING =====
+    if KDT:IsBlacklisted(member.name) then
+        local warnOverlay = card:CreateTexture(nil, "BACKGROUND", nil, 1)
+        warnOverlay:SetAllPoints(card)
+        warnOverlay:SetTexture("Interface\\Buttons\\WHITE8X8")
+        warnOverlay:SetVertexColor(0.5, 0, 0, 0.25)
+        
+        local warnText = card:CreateFontString(nil, "OVERLAY")
+        warnText:SetFont("Fonts\\FRIZQT__.TTF", 11, "OUTLINE")
+        warnText:SetPoint("BOTTOMRIGHT", -8, 8)
+        warnText:SetText("|cFFFF3333[BLACKLISTED]|r")
+    end
+    
+    return card, cardHeight + 3
+end
+
+-- ==================== SETUP GROUP REFRESH ====================
+function KDT:SetupGroupRefresh(f)
+    local e = f.groupElements
+    
+    function f:RefreshGroup()
         if not e then return end
         
-        -- Clear existing rows
+        -- Clear existing cards
         if self.memberRows then
             for _, row in ipairs(self.memberRows) do
                 if row then
@@ -257,170 +470,64 @@ function KDT:SetupGroupRefresh(f)
         local members = KDT:GetGroupMembers()
         local info = KDT:AnalyzeGroup(members)
         
-        -- Update UI
-        e.secInput:SetText(tostring(KDT.DB.settings.countdownSeconds or 10))
-        e.autoCheck:SetChecked(KDT.DB.settings.autoPost or false)
-        
+        -- Update compact overview
         e.roleText:SetText(KDT.ROLE_ICONS.TANK .. " " .. info.tanks .. "  " ..
                           KDT.ROLE_ICONS.HEALER .. " " .. info.healers .. "  " ..
                           KDT.ROLE_ICONS.DAMAGER .. " " .. info.dps)
         
+        -- Utility info (compact)
+        local utilParts = {}
         if info.hasBR then
-            local t = {}
-            for c in pairs(info.brClasses) do
-                t[#t + 1] = "|cFF" .. KDT:GetClassColorHex(c) .. (KDT.CLASS_NAMES[c] or c) .. "|r"
-            end
-            e.rezText:SetText("|cFF00FF00[+]|r Battle Rez: " .. table.concat(t, ", "))
+            table.insert(utilParts, "|cFF00FF00BR|r")
         else
-            e.rezText:SetText("|cFFFF4444[X] NO Battle Rez!|r")
+            table.insert(utilParts, "|cFFFF4444No BR|r")
         end
-        
         if info.hasBL then
-            local t = {}
-            for c in pairs(info.blClasses) do
-                t[#t + 1] = "|cFF" .. KDT:GetClassColorHex(c) .. (KDT.CLASS_NAMES[c] or c) .. "|r"
-            end
-            e.blText:SetText("|cFF00FF00[+]|r Bloodlust: " .. table.concat(t, ", "))
+            table.insert(utilParts, "|cFF00FF00BL|r")
         else
-            e.blText:SetText("|cFFFF4444[X] NO Bloodlust!|r")
+            table.insert(utilParts, "|cFFFF4444No BL|r")
         end
-        
-        e.stackText:SetText(#info.stacking > 0 and
-            "|cFFFFCC00[!]|r Stacking: " .. table.concat(info.stacking, ", ") or
-            "|cFF00FF00[+]|r No stacking")
+        if #info.stacking > 0 then
+            table.insert(utilParts, "|cFFFFCC00Stack: " .. #info.stacking .. "|r")
+        end
+        e.utilText:SetText(table.concat(utilParts, " | "))
         
         -- Keys summary
         local keys = {}
         for _, m in ipairs(members) do
             if m.keystone then
-                local kc = m.keystone.level >= 12 and "|cFFFF8000" or
-                          m.keystone.level >= 10 and "|cFFA335EE" or "|cFF0070DD"
-                keys[#keys + 1] = kc .. m.keystone.text .. "|r"
+                local kR, kG, kB = GetKeyLevelColor(m.keystone.level)
+                local keyColor = string.format("%02X%02X%02X", kR*255, kG*255, kB*255)
+                -- Use text field which contains "STRT +2" format
+                local keyDisplay = m.keystone.text or ("+" .. m.keystone.level)
+                keys[#keys + 1] = "|cFF" .. keyColor .. keyDisplay .. "|r"
             end
         end
-        e.keyText:SetText(#keys > 0 and "|cFFFFD100[Key]|r " .. table.concat(keys, ", ") or "|cFF666666No keys|r")
+        e.keyText:SetText(#keys > 0 and "|cFFFFD100Keys:|r " .. table.concat(keys, ", ") or "|cFF666666No keys in group|r")
         
-        -- Set scroll child width
+        -- Load settings
+        if KDT.DB and KDT.DB.settings then
+            e.secInput:SetText(tostring(KDT.DB.settings.countdownSeconds or 10))
+            e.autoCheck:SetChecked(KDT.DB.settings.autoPost or false)
+        end
+        
+        -- Set container width
         local scrollWidth = e.memberScroll:GetWidth() or 600
-        e.memberContainer:SetWidth(scrollWidth - 5)
+        e.memberContainer:SetWidth(scrollWidth - 10)
         
-        -- Create member rows
-        local yOffset = 0
+        -- Create member cards
+        local yOffset = -5
+        local totalHeight = 5
         
         for i, m in ipairs(members) do
-            local row = CreateFrame("Frame", nil, e.memberContainer, "BackdropTemplate")
-            row:SetHeight(30)
-            row:SetPoint("TOPLEFT", e.memberContainer, "TOPLEFT", 0, yOffset)
-            row:SetPoint("RIGHT", e.memberContainer, "RIGHT", 0, 0)
-            row:SetBackdrop({bgFile = "Interface\\Buttons\\WHITE8X8"})
-            row:SetBackdropColor(i % 2 == 0 and 0.07 or 0.05, i % 2 == 0 and 0.07 or 0.05, i % 2 == 0 and 0.09 or 0.07, 0.95)
-            
-            -- Enable mouse wheel on rows
-            row:EnableMouseWheel(true)
-            row:SetScript("OnMouseWheel", function(self, delta)
-                local scroll = e.memberScroll
-                local current = scroll:GetVerticalScroll()
-                local maxScroll = scroll:GetVerticalScrollRange()
-                local newScroll = current - (delta * 34)
-                newScroll = math.max(0, math.min(newScroll, maxScroll))
-                scroll:SetVerticalScroll(newScroll)
-            end)
-            
-            -- Role icon
-            local role = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            role:SetPoint("LEFT", 5, 0)
-            role:SetText(KDT.ROLE_ICONS[m.role] or KDT.ROLE_ICONS.DAMAGER)
-            
-            -- Name (with class color)
-            local nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            nameText:SetPoint("LEFT", 28, 0)
-            nameText:SetWidth(98)
-            nameText:SetJustifyH("LEFT")
-            nameText:SetText("|cFF" .. KDT:GetClassColorHex(m.class) .. (m.name or "?") .. "|r")
-            
-            -- Class
-            local classText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            classText:SetPoint("LEFT", 130, 0)
-            classText:SetWidth(68)
-            classText:SetJustifyH("LEFT")
-            classText:SetText(KDT.CLASS_NAMES[m.class] or "?")
-            classText:SetTextColor(0.5, 0.5, 0.5)
-            
-            -- Spec
-            local specText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            specText:SetPoint("LEFT", 200, 0)
-            specText:SetWidth(78)
-            specText:SetJustifyH("LEFT")
-            specText:SetText(m.spec or "?")
-            specText:SetTextColor(0.4, 0.4, 0.4)
-            
-            -- Item Level
-            local ilvlText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            ilvlText:SetPoint("LEFT", 280, 0)
-            ilvlText:SetWidth(40)
-            ilvlText:SetJustifyH("LEFT")
-            local ilvl = m.ilvl
-            if ilvl then
-                local ilvlColor = ilvl >= 639 and "|cFFFF8000" or
-                                 ilvl >= 626 and "|cFFA335EE" or
-                                 ilvl >= 610 and "|cFF0070DD" or
-                                 "|cFF1EFF00"
-                ilvlText:SetText(ilvlColor .. ilvl .. "|r")
-            else
-                ilvlText:SetText("|cFF444444-|r")
-            end
-            
-            -- RIO Score
-            local rioText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            rioText:SetPoint("LEFT", 325, 0)
-            rioText:SetWidth(50)
-            rioText:SetJustifyH("LEFT")
-            local rio = m.rio
-            if rio and rio > 0 then
-                local rioColor = rio >= 3000 and "|cFFFF8000" or
-                                rio >= 2500 and "|cFFA335EE" or
-                                rio >= 2000 and "|cFF0070DD" or
-                                rio >= 1500 and "|cFF1EFF00" or
-                                "|cFFFFFFFF"
-                rioText:SetText(rioColor .. rio .. "|r")
-            else
-                rioText:SetText("|cFF444444-|r")
-            end
-            
-            -- Key
-            local keyText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            keyText:SetPoint("LEFT", 380, 0)
-            keyText:SetWidth(100)
-            keyText:SetJustifyH("LEFT")
-            if m.keystone then
-                local kc = m.keystone.level >= 12 and "|cFFFF8000" or
-                          m.keystone.level >= 10 and "|cFFA335EE" or "|cFF0070DD"
-                keyText:SetText(kc .. m.keystone.text .. "|r")
-            else
-                keyText:SetText("|cFF444444No Key|r")
-            end
-            
-            -- Utility icons (BR/BL) on far right
-            local utilText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            utilText:SetPoint("RIGHT", -5, 0)
-            local u = {}
-            if KDT.BATTLE_REZ[m.class] then u[#u + 1] = "|cFF00DD00BR|r" end
-            if KDT.BLOODLUST[m.class] then u[#u + 1] = "|cFFFF8800BL|r" end
-            utilText:SetText(table.concat(u, " "))
-            
-            -- Blacklist warning
-            if KDT:IsBlacklisted(m.name) then
-                local warn = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                warn:SetPoint("RIGHT", utilText, "LEFT", -5, 0)
-                warn:SetText("|cFFFF0000[BL!]|r")
-            end
-            
-            row:Show()
-            self.memberRows[#self.memberRows + 1] = row
-            yOffset = yOffset - 32
+            local card, cardHeight = CreateMemberCard(e.memberContainer, m, yOffset, e.memberScroll, SEASON_DUNGEONS)
+            card:Show()
+            self.memberRows[#self.memberRows + 1] = card
+            yOffset = yOffset - cardHeight
+            totalHeight = totalHeight + cardHeight
         end
         
-        -- Set scroll child height
-        e.memberContainer:SetHeight(math.max(1, math.abs(yOffset) + 10))
+        -- Set container height
+        e.memberContainer:SetHeight(math.max(1, totalHeight + 10))
     end
 end

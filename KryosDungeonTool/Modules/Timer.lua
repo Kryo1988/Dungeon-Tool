@@ -614,41 +614,103 @@ end
 
 -- ==================== CONTEXT MENU ====================
 function KDT:ShowTimerContextMenu(frame)
-    -- Create dropdown frame once
-    if not self.timerDropdown then
-        self.timerDropdown = CreateFrame("Frame", "KDTTimerMenu", UIParent, "UIDropDownMenuTemplate")
+    -- Create custom context menu (EasyMenu doesn't exist in WoW 12.0)
+    if self.timerContextMenu then
+        self.timerContextMenu:Hide()
+        self.timerContextMenu = nil
+        return
     end
     
-    local menu = {
-        {text = "KDT Timer", isTitle = true, notCheckable = true},
-        {text = "Lock Position", checked = function() return self.DB.timer.locked end, func = function()
-            self.DB.timer.locked = not self.DB.timer.locked
-            self:Print("Timer " .. (self.DB.timer.locked and "locked" or "unlocked"))
-        end},
-        {text = "Show When Inactive", checked = function() return self.DB.timer.showWhenInactive end, func = function()
-            self.DB.timer.showWhenInactive = not self.DB.timer.showWhenInactive
-        end},
-        {text = " ", notCheckable = true, disabled = true},
-        {text = "Scale", notCheckable = true, hasArrow = true, menuList = {
-            {text = "50%", notCheckable = true, func = function() self:SetTimerScale(0.5) end},
-            {text = "75%", notCheckable = true, func = function() self:SetTimerScale(0.75) end},
-            {text = "100%", notCheckable = true, func = function() self:SetTimerScale(1.0) end},
-            {text = "125%", notCheckable = true, func = function() self:SetTimerScale(1.25) end},
-            {text = "150%", notCheckable = true, func = function() self:SetTimerScale(1.5) end},
-        }},
-        {text = "Timer Settings", notCheckable = true, func = function()
-            self:ShowTimerSettings()
-        end},
-        {text = " ", notCheckable = true, disabled = true},
-        {text = "Hide Timer", notCheckable = true, func = function()
-            self.DB.timer.enabled = false
-            self.ExternalTimer:Hide()
-            self:UpdateDefaultTimerVisibility()
-            self:Print("Timer hidden. Use /kdt timer to re-enable.")
-        end},
-    }
+    local menu = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    menu:SetSize(160, 180)
+    menu:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        edgeSize = 1
+    })
+    menu:SetBackdropColor(0.1, 0.1, 0.12, 0.98)
+    menu:SetBackdropBorderColor(0.3, 0.3, 0.35, 1)
+    menu:SetFrameStrata("DIALOG")
+    menu:SetPoint("CENTER", UIParent, "CENTER")
+    self.timerContextMenu = menu
     
-    EasyMenu(menu, self.timerDropdown, "cursor", 0, 0, "MENU")
+    -- Make it draggable
+    menu:EnableMouse(true)
+    menu:SetMovable(true)
+    menu:RegisterForDrag("LeftButton")
+    menu:SetScript("OnDragStart", menu.StartMoving)
+    menu:SetScript("OnDragStop", menu.StopMovingOrSizing)
+    
+    local yOffset = -5
+    local function AddButton(text, onClick, isChecked)
+        local btn = CreateFrame("Button", nil, menu)
+        btn:SetSize(156, 20)
+        btn:SetPoint("TOPLEFT", 2, yOffset)
+        yOffset = yOffset - 22
+        
+        local highlight = btn:CreateTexture(nil, "HIGHLIGHT")
+        highlight:SetAllPoints()
+        highlight:SetColorTexture(0.3, 0.3, 0.4, 0.5)
+        
+        local label = btn:CreateFontString(nil, "OVERLAY")
+        label:SetFont("Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
+        label:SetPoint("LEFT", 8, 0)
+        label:SetText(text)
+        label:SetTextColor(0.9, 0.9, 0.9)
+        
+        if isChecked then
+            local check = btn:CreateFontString(nil, "OVERLAY")
+            check:SetFont("Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
+            check:SetPoint("RIGHT", -8, 0)
+            check:SetText("*")
+            check:SetTextColor(0.2, 1, 0.2)
+        end
+        
+        btn:SetScript("OnClick", function()
+            onClick()
+            menu:Hide()
+            self.timerContextMenu = nil
+        end)
+    end
+    
+    local function AddTitle(text)
+        local label = menu:CreateFontString(nil, "OVERLAY")
+        label:SetFont("Fonts\\FRIZQT__.TTF", 9, "OUTLINE")
+        label:SetPoint("TOPLEFT", 8, yOffset)
+        label:SetText(text)
+        label:SetTextColor(0.6, 0.6, 0.2)
+        yOffset = yOffset - 18
+    end
+    
+    AddTitle("KDT Timer")
+    AddButton("Lock Position", function() 
+        self.DB.timer.locked = not self.DB.timer.locked
+        self:Print("Timer " .. (self.DB.timer.locked and "locked" or "unlocked"))
+    end, self.DB.timer.locked)
+    AddButton("Show When Inactive", function()
+        self.DB.timer.showWhenInactive = not self.DB.timer.showWhenInactive
+    end, self.DB.timer.showWhenInactive)
+    AddButton("Scale 75%", function() self:SetTimerScale(0.75) end)
+    AddButton("Scale 100%", function() self:SetTimerScale(1.0) end)
+    AddButton("Scale 125%", function() self:SetTimerScale(1.25) end)
+    AddButton("Timer Settings", function() self:ShowTimerSettings() end)
+    AddButton("Hide Timer", function()
+        self.DB.timer.enabled = false
+        self.ExternalTimer:Hide()
+        self:UpdateDefaultTimerVisibility()
+        self:Print("Timer hidden. Use /kdt timer to re-enable.")
+    end)
+    
+    -- Adjust height
+    menu:SetHeight(-yOffset + 10)
+    
+    -- Auto-close
+    C_Timer.After(10, function()
+        if menu and menu:IsShown() then
+            menu:Hide()
+            self.timerContextMenu = nil
+        end
+    end)
 end
 
 -- ==================== SET TIMER SCALE ====================

@@ -1,5 +1,89 @@
 # KryosDungeonTool Changelog
 
+## Version 1.8.18 (2026-02-04)
+
+### New Feature: Damage / Heal Meter
+
+**Complete Damage Meter module** with combat logging and real-time display.
+
+#### Core Features:
+- **Combat Log Parser**: Tracks damage, healing, interrupts, deaths from COMBAT_LOG_EVENT_UNFILTERED
+- **Multiple Display Modes**:
+  - Damage Done / DPS
+  - Healing Done / HPS
+  - Interrupts / Deaths
+  - Damage Taken
+- **Multi-Window Support**: Create multiple meter windows for different data views
+- **Current/Overall Toggle**: Switch between current segment and overall session data
+- **Spell Breakdown**: Tooltip shows top 5 spells per player
+
+#### Meter Window Features (Details-inspired):
+- Draggable and resizable floating window
+- Class-colored bars with percentage display
+- **Hover Buttons**: Reset Segment, Reset All, Report, Overall toggle
+- **Click mode label** to toggle paired modes (Damage ↔ DPS, Healing ↔ HPS)
+- **Right-click context menu** with categorized mode selection (like Details)
+- Report to chat function
+- Live refresh during combat (0.5 sec update)
+
+#### Settings Tab (METER):
+- Enable/Disable meter tracking
+- Bar height, font size, max bars sliders
+- Show rank, percent, class colors toggles
+- Mode shortcut buttons for quick access
+
+#### Slash Commands:
+- `/kdt meter` - Toggle meter window
+- `/kdt meter reset` - Reset all combat data
+- `/kdt meter new` - Create additional window
+
+### Bug Fixes:
+- **Fixed ADDON_ACTION_FORBIDDEN error**: Delayed event registration for WoW 12.0 compatibility
+- **Fixed Season 3 dungeons**: Replaced Cinderbrew (CoE) with Ara-Kara (ARAK) - correct S3 rotation
+
+### Season 3 Dungeon Pool (Patch 11.2):
+1. Eco-Dome Al'dani (EDA) - NEW
+2. Ara-Kara, City of Echoes (ARAK)
+3. The Dawnbreaker (DB)
+4. Priory of the Sacred Flame (PSF)
+5. Operation: Floodgate (FG)
+6. Tazavesh: Streets of Wonder (STRT)
+7. Tazavesh: So'leah's Gambit (GMBT)
+8. Halls of Atonement (HOA)
+
+---
+
+## Version 1.8.17 (2026-02-04)
+
+### Major UI Redesign: Group Members Panel
+
+**Complete visual overhaul** of the Group Members section, inspired by Raider.IO's party view design.
+
+#### New Features:
+- **Player Cards**: Each group member now displayed in a modern card layout instead of simple table rows
+- **Class Icons**: Large class icon portraits for each player with class-colored accent bar
+- **RIO Score Display**: Prominent, color-coded RIO score (22pt font) with quality-based coloring
+- **Dungeon Header**: Season 3 dungeon icons displayed at top with tooltips
+  - Eco-Dome, Priory, Dawnbreaker, Halls of Atonement
+  - Cinderbrew, Streets, Floodgate, Gambit
+- **Key Level Per Dungeon**: Shows player's key level under matching dungeon icon
+- **Compact Overview**: Streamlined top panel with role counts, BR/BL status, and group keys
+
+#### Visual Improvements:
+- Dark theme cards with subtle borders
+- Class-colored left accent bar on each card
+- Color-coded key levels (orange 15+, purple 12+, blue 10+, green 7+)
+- Color-coded RIO scores (orange 3500+, purple 3000+, blue 2500+, green 2000+)
+- Blacklist warning overlay with red tint
+- Improved typography hierarchy (name > spec > RIO)
+
+#### Layout Changes:
+- Buttons reorganized in 2x2 grid (Ready Check, Post Chat, Countdown, Abandon)
+- Hidden countdown settings (uses saved value)
+- Scrollable card container with mouse wheel support
+
+---
+
 ## Version 1.8.16 (2026-02-04)
 
 ### BiS Data Update

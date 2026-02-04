@@ -48,6 +48,113 @@ SlashCmdList["KDT"] = function(msg)
         -- Share blacklist
         KDT:ShareBlacklist()
         
+    elseif cmd == "meter" then
+        -- Damage meter commands
+        local arg = msg:lower():match("^%s*%S+%s+(%S+)")
+        if arg == "reset" then
+            KDT.Meter:Reset()
+            KDT:Print("DMG Meter data reset.")
+        elseif arg == "toggle" or arg == "window" then
+            KDT.Meter:ToggleWindow(1)
+        elseif arg == "new" then
+            local id = #KDT.Meter.windows + 1
+            local window = KDT.Meter:CreateWindow(id)
+            window:Show()
+            KDT:Print("Created new DMG Meter window #" .. id)
+        elseif arg == "hide" then
+            KDT.Meter:HideAllWindows()
+        elseif arg == "show" then
+            KDT.Meter:ShowAllWindows()
+        elseif arg == "lock" then
+            -- Toggle lock on first window (syncs to all)
+            if KDT.Meter.windows[1] then
+                KDT.Meter.windows[1]:ToggleLock()
+            else
+                KDT:Print("No DMG Meter window open")
+            end
+        elseif arg == "debug" then
+            local _, _, _, buildInfo = GetBuildInfo()
+            local isMidnight = buildInfo >= 120000
+            KDT:Print("=== Meter Debug ===")
+            KDT:Print("WoW build: " .. tostring(buildInfo) .. " (Midnight: " .. tostring(isMidnight) .. ")")
+            KDT:Print("inCombat: " .. tostring(KDT.Meter.inCombat) .. ", UnitAffectingCombat: " .. tostring(UnitAffectingCombat("player")))
+            KDT:Print("processCount: " .. tostring(KDT.Meter.processCount or 0))
+            KDT:Print("segments: " .. tostring(#KDT.Meter.segments))
+            
+            if KDT.Meter.currentSegment then
+                local pCount = 0
+                for name, player in pairs(KDT.Meter.currentSegment.players) do
+                    pCount = pCount + 1
+                    KDT:Print("  - " .. tostring(name) .. ": " .. tostring(player.damage) .. " dmg")
+                end
+                KDT:Print("players: " .. pCount .. ", totalDmg: " .. tostring(KDT.Meter.currentSegment.totalDamage or 0))
+            else
+                KDT:Print("currentSegment: nil")
+            end
+            
+            if isMidnight and C_DamageMeter then
+                KDT:Print("--- C_DamageMeter API ---")
+                
+                -- Get available sessions
+                local sessions = C_DamageMeter.GetAvailableCombatSessions()
+                if sessions then
+                    KDT:Print("Available sessions: " .. #sessions)
+                    for i, s in ipairs(sessions) do
+                        KDT:Print("  Session " .. i .. ": ID=" .. tostring(s.sessionID) .. ", name=" .. tostring(s.name or "nil"))
+                    end
+                end
+                
+                -- Try both methods
+                local sessionId = sessions and #sessions > 0 and sessions[#sessions].sessionID or nil
+                
+                if sessionId then
+                    KDT:Print("Using sessionID: " .. tostring(sessionId))
+                    local session = C_DamageMeter.GetCombatSessionFromID(sessionId, Enum.DamageMeterType.DamageDone)
+                    if session and session.combatSources then
+                        KDT:Print("FromID sources: " .. #session.combatSources)
+                        for i, src in ipairs(session.combatSources) do
+                            local nameStr = (src.isLocalPlayer and UnitName("player") .. " (self)") or (not issecretvalue or not issecretvalue(src.name)) and tostring(src.name) or "SECRET"
+                            local dmgStr = (not issecretvalue or not issecretvalue(src.totalAmount)) and tostring(src.totalAmount) or "SECRET"
+                            KDT:Print("  " .. i .. ". " .. nameStr .. ": " .. dmgStr)
+                        end
+                    end
+                end
+                
+                -- Also try Type method for comparison
+                local sessionType = C_DamageMeter.GetCombatSessionFromType(Enum.DamageMeterSessionType.Current, Enum.DamageMeterType.DamageDone)
+                if sessionType and sessionType.combatSources then
+                    KDT:Print("FromType sources: " .. #sessionType.combatSources)
+                end
+            end
+        elseif arg == "test" then
+            -- Force add test data
+            if not KDT.Meter.currentSegment then
+                KDT.Meter:StartCombat("Test Combat")
+            end
+            local testName = UnitName("player")
+            local _, testClass = UnitClass("player")
+            local player = KDT.Meter:GetOrCreatePlayer(KDT.Meter.currentSegment, testName, testClass)
+            if player then
+                player.damage = player.damage + 10000
+                KDT.Meter.currentSegment.totalDamage = KDT.Meter.currentSegment.totalDamage + 10000
+                KDT:Print("Added 10k test damage for " .. tostring(testName))
+                KDT.Meter:RefreshAllWindows()
+            else
+                KDT:Print("Failed to create test player")
+            end
+        elseif arg == "cltest" then
+            -- Test if combat log events are being received
+            KDT:Print("Starting combat log monitor for 10 seconds...")
+            KDT.Meter.debugMode = true
+            C_Timer.After(10, function()
+                KDT.Meter.debugMode = false
+                KDT:Print("Combat log monitor stopped. processCount: " .. tostring(KDT.Meter.processCount or 0))
+            end)
+        else
+            -- Toggle main window or open settings
+            KDT.Meter:ToggleWindow(1)
+        end
+        
     elseif cmd == "debug" then
         -- Debug keystone MapIDs
         local mapID = C_MythicPlus.GetOwnedKeystoneMapID()

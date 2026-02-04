@@ -64,6 +64,7 @@ function KDT:CreateMainFrame()
     f.teleportElements = {}
     f.timerElements = {}
     f.bisElements = {}
+    f.meterElements = {}
     f.memberRows = {}
     f.blRows = {}
     f.bisRows = {}
@@ -126,11 +127,12 @@ function KDT:CreateMainFrame()
         return tab
     end
     
-    f.groupTab = CreateTab("GROUP CHECK", 0, 105)
-    f.teleportTab = CreateTab("M+ TELEPORTS", 108, 100)
-    f.timerTab = CreateTab("M+ TIMER", 211, 85)
-    f.bisTab = CreateTab("BiS GEAR", 299, 80)
-    f.blacklistTab = CreateTab("BLACKLIST", 382, 85)
+    f.groupTab = CreateTab("GROUP CHECK", 0, 95)
+    f.teleportTab = CreateTab("M+ TELEPORTS", 98, 95)
+    f.timerTab = CreateTab("M+ TIMER", 196, 75)
+    f.meterTab = CreateTab("DMG METER", 274, 80)
+    f.bisTab = CreateTab("BiS GEAR", 357, 70)
+    f.blacklistTab = CreateTab("BLACKLIST", 430, 75)
     
     -- Content Area (with clipping to hide overflow)
     f.content = CreateFrame("Frame", nil, f)
@@ -180,7 +182,7 @@ function KDT:CreateMainFrame()
         self.currentTab = tabName
         
         -- Reset all tabs
-        local tabs = {self.groupTab, self.teleportTab, self.timerTab, self.bisTab, self.blacklistTab}
+        local tabs = {self.groupTab, self.teleportTab, self.timerTab, self.bisTab, self.meterTab, self.blacklistTab}
         for _, tab in ipairs(tabs) do
             tab:SetBackdropColor(0.08, 0.08, 0.10, 1)
             tab:SetBackdropBorderColor(0.2, 0.2, 0.25, 1)
@@ -194,6 +196,7 @@ function KDT:CreateMainFrame()
         for _, el in pairs(self.teleportElements) do if el and el.Hide then el:Hide() end end
         for _, el in pairs(self.timerElements) do if el and el.Hide then el:Hide() end end
         for _, el in pairs(self.bisElements) do if el and el.Hide then el:Hide() end end
+        for _, el in pairs(self.meterElements) do if el and el.Hide then el:Hide() end end
         for _, btn in ipairs(self.teleportButtons) do if btn and btn.Hide then btn:Hide() end end
         
         -- Also hide dynamic rows (member rows, blacklist rows, bis rows)
@@ -241,6 +244,10 @@ function KDT:CreateMainFrame()
             ActivateTab(self.bisTab)
             for _, el in pairs(self.bisElements) do if el and el.Show then el:Show() end end
             if self.RefreshBis then self:RefreshBis() end
+        elseif tabName == "meter" then
+            ActivateTab(self.meterTab)
+            for _, el in pairs(self.meterElements) do if el and el.Show then el:Show() end end
+            if self.RefreshMeter then self:RefreshMeter() end
         else
             ActivateTab(self.blacklistTab)
             for _, el in pairs(self.blacklistElements) do if el and el.Show then el:Show() end end
@@ -253,6 +260,7 @@ function KDT:CreateMainFrame()
     f.teleportTab:SetScript("OnClick", function() f:SwitchTab("teleport") end)
     f.timerTab:SetScript("OnClick", function() f:SwitchTab("timer") end)
     f.bisTab:SetScript("OnClick", function() f:SwitchTab("bis") end)
+    f.meterTab:SetScript("OnClick", function() f:SwitchTab("meter") end)
     f.blacklistTab:SetScript("OnClick", function() f:SwitchTab("blacklist") end)
     
     self.MainFrame = f
