@@ -78,7 +78,10 @@ local function CreatePlayerData(name, class)
 end
 
 local function FormatNumber(num)
-    if not num or num == 0 then return "0" end
+    -- Handle nil, secret values, and zero
+    if num == nil then return "0" end
+    if issecretvalue and issecretvalue(num) then return "?" end
+    if num == 0 then return "0" end
     if num >= 1000000000 then return string.format("%.2fB", num / 1000000000)
     elseif num >= 1000000 then return string.format("%.2fM", num / 1000000)
     elseif num >= 1000 then return string.format("%.1fK", num / 1000)
@@ -129,7 +132,6 @@ function Meter:EndCombat()
         if self.currentSegment.totalDamage > 0 or self.currentSegment.totalHealing > 0 then
             table.insert(self.segments, 1, self.currentSegment)
             while #self.segments > self.maxSegments do table.remove(self.segments) end
-            self:CalculateOverall()
         end
     end
     
@@ -146,39 +148,55 @@ function Meter:CollectFinalData()
     local dmgSession = C_DamageMeter.GetCombatSessionFromType(sessionType, Enum.DamageMeterType.DamageDone)
     if dmgSession and dmgSession.combatSources then
         for i, source in ipairs(dmgSession.combatSources) do
-            local name = source.isLocalPlayer and UnitName("player") or (source.name and UnitName(source.name)) or ("Player " .. i)
-            if name then
-                if not self.currentSegment.players[name] then
-                    self.currentSegment.players[name] = CreatePlayerData(name, source.classFilename)
-                end
-                local p = self.currentSegment.players[name]
-                if source.totalAmount and not (issecretvalue and issecretvalue(source.totalAmount)) then
-                    p.damage = source.totalAmount
-                    self.currentSegment.totalDamage = self.currentSegment.totalDamage + source.totalAmount
-                end
-                if source.amountPerSecond and not (issecretvalue and issecretvalue(source.amountPerSecond)) then
-                    p.dps = source.amountPerSecond
+            -- Skip pets (they have nil classFilename)
+            local classFile = source.classFilename
+            if classFile then
+                local name = source.isLocalPlayer and UnitName("player") or (source.name and UnitName(source.name)) or nil
+                if name then
+                    if not self.currentSegment.players[name] then
+                        local classStr = (not issecretvalue or not issecretvalue(classFile)) and classFile or "UNKNOWN"
+                        self.currentSegment.players[name] = CreatePlayerData(name, classStr)
+                    end
+                    local p = self.currentSegment.players[name]
+                    if source.totalAmount and not (issecretvalue and issecretvalue(source.totalAmount)) then
+                        p.damage = source.totalAmount
+                        self.currentSegment.totalDamage = self.currentSegment.totalDamage + source.totalAmount
+                    end
+                    if source.amountPerSecond and not (issecretvalue and issecretvalue(source.amountPerSecond)) then
+                        p.dps = source.amountPerSecond
+                    end
                 end
             end
         end
     end
     
-    -- Healing
+    -- Healing - only update from API if we don't have CLEU data
+    -- (CLEU tracking is more reliable during combat)
     local healSession = C_DamageMeter.GetCombatSessionFromType(sessionType, Enum.DamageMeterType.HealingDone)
     if healSession and healSession.combatSources then
         for i, source in ipairs(healSession.combatSources) do
-            local name = source.isLocalPlayer and UnitName("player") or (source.name and UnitName(source.name)) or ("Player " .. i)
-            if name then
-                if not self.currentSegment.players[name] then
-                    self.currentSegment.players[name] = CreatePlayerData(name, source.classFilename)
-                end
-                local p = self.currentSegment.players[name]
-                if source.totalAmount and not (issecretvalue and issecretvalue(source.totalAmount)) then
-                    p.healing = source.totalAmount
-                    self.currentSegment.totalHealing = self.currentSegment.totalHealing + source.totalAmount
-                end
-                if source.amountPerSecond and not (issecretvalue and issecretvalue(source.amountPerSecond)) then
-                    p.hps = source.amountPerSecond
+            -- Skip pets (they have nil classFilename)
+            local classFile = source.classFilename
+            if classFile then
+                local name = source.isLocalPlayer and UnitName("player") or (source.name and UnitName(source.name)) or nil
+                if name then
+                    if not self.currentSegment.players[name] then
+                        local classStr = (not issecretvalue or not issecretvalue(classFile)) and classFile or "UNKNOWN"
+                        self.currentSegment.players[name] = CreatePlayerData(name, classStr)
+                    end
+                    local p = self.currentSegment.players[name]
+                    -- Only update if we don't already have CLEU-tracked healing data
+                    if p.healing == 0 then
+                        if source.totalAmount and not (issecretvalue and issecretvalue(source.totalAmount)) then
+                            p.healing = source.totalAmount
+                            self.currentSegment.totalHealing = self.currentSegment.totalHealing + source.totalAmount
+                        end
+                    end
+                    if p.hps == 0 then
+                        if source.amountPerSecond and not (issecretvalue and issecretvalue(source.amountPerSecond)) then
+                            p.hps = source.amountPerSecond
+                        end
+                    end
                 end
             end
         end
@@ -228,9 +246,11 @@ function Meter:UpdateCombatState()
     end
 end
 
--- CLEU Processing for WoW 11.x
+-- CLEU Processing - Always track healing via CLEU (C_DamageMeter healing is unreliable during combat)
+-- On WoW 11.x: Track everything via CLEU
+-- On WoW 12.0+: Track healing via CLEU, damage via API (for live display)
 function Meter:ProcessCombatLogEvent(timestamp, subevent, hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, ...)
-    if not self.enabled or IS_MIDNIGHT then return end
+    if not self.enabled then return end
     self.processCount = (self.processCount or 0) + 1
     
     local function IsTracked(flags)
@@ -252,19 +272,26 @@ function Meter:ProcessCombatLogEvent(timestamp, subevent, hideCaster, sourceGUID
     local arg12, arg13, arg14, arg15, arg16 = ...
     local trackSource = IsTracked(sourceFlags)
     
-    if subevent == "SWING_DAMAGE" then
-        local amount = arg12 or 0
-        if trackSource and amount > 0 and sourceName then
-            local p = self:GetOrCreatePlayer(self.currentSegment, sourceName, GetClass(sourceGUID))
-            if p then p.damage = p.damage + amount; self.currentSegment.totalDamage = self.currentSegment.totalDamage + amount end
+    -- On Midnight, only track healing via CLEU (damage uses C_DamageMeter for live display)
+    -- On older versions, track everything via CLEU
+    if not IS_MIDNIGHT then
+        if subevent == "SWING_DAMAGE" then
+            local amount = arg12 or 0
+            if trackSource and amount > 0 and sourceName then
+                local p = self:GetOrCreatePlayer(self.currentSegment, sourceName, GetClass(sourceGUID))
+                if p then p.damage = p.damage + amount; self.currentSegment.totalDamage = self.currentSegment.totalDamage + amount end
+            end
+        elseif subevent:match("SPELL.*DAMAGE") or subevent == "RANGE_DAMAGE" then
+            local amount = arg15 or 0
+            if trackSource and amount > 0 and sourceName then
+                local p = self:GetOrCreatePlayer(self.currentSegment, sourceName, GetClass(sourceGUID))
+                if p then p.damage = p.damage + amount; self.currentSegment.totalDamage = self.currentSegment.totalDamage + amount end
+            end
         end
-    elseif subevent:match("SPELL.*DAMAGE") or subevent == "RANGE_DAMAGE" then
-        local amount = arg15 or 0
-        if trackSource and amount > 0 and sourceName then
-            local p = self:GetOrCreatePlayer(self.currentSegment, sourceName, GetClass(sourceGUID))
-            if p then p.damage = p.damage + amount; self.currentSegment.totalDamage = self.currentSegment.totalDamage + amount end
-        end
-    elseif subevent:match("SPELL.*HEAL") then
+    end
+    
+    -- Always track healing via CLEU (more reliable than API during combat)
+    if subevent:match("SPELL.*HEAL") then
         local amount, over = arg15 or 0, arg16 or 0
         if trackSource and amount > over and sourceName then
             local p = self:GetOrCreatePlayer(self.currentSegment, sourceName, GetClass(sourceGUID))
@@ -278,11 +305,13 @@ end
 
 -- Segment Management
 function Meter:GetSegmentList()
-    local list = {{index = 0, name = "Current Segment", segment = self.currentSegment}}
+    local list = {
+        {index = 0, name = "Current Segment", segment = self.currentSegment},
+        {index = -1, name = "Overall Data", segment = self:GetOverallData()},  -- Always second
+    }
     for i, seg in ipairs(self.segments) do
         table.insert(list, {index = i, name = (seg.name or ("Segment #" .. i)) .. (seg.timestamp and (" (" .. seg.timestamp .. ")") or ""), segment = seg})
     end
-    if self.overallData then table.insert(list, {index = -1, name = "Overall Data", segment = self.overallData}) end
     return list
 end
 
@@ -290,7 +319,7 @@ function Meter:SetViewingSegment(index) self.viewingSegmentIndex = index; self:R
 
 function Meter:GetCurrentSegment()
     if self.viewingSegmentIndex == 0 then return self.currentSegment
-    elseif self.viewingSegmentIndex == -1 then return self.overallData
+    elseif self.viewingSegmentIndex == -1 then return self:GetOverallData()
     else return self.segments[self.viewingSegmentIndex] end
 end
 
@@ -300,10 +329,30 @@ function Meter:GetSegmentName()
     else return self.segments[self.viewingSegmentIndex] and self.segments[self.viewingSegmentIndex].name or ("Segment " .. self.viewingSegmentIndex) end
 end
 
-function Meter:CalculateOverall()
-    self.overallData = CreateSegment("Overall")
-    self.overallData.startTime = 0
+-- Get or calculate overall data (includes current segment + all history)
+function Meter:GetOverallData()
+    local overall = CreateSegment("Overall")
+    overall.startTime = 0
     local playerTotals, totalDuration = {}, 0
+    
+    -- Include current segment if it has data
+    if self.currentSegment and self.currentSegment.totalDamage > 0 or (self.currentSegment and self.currentSegment.totalHealing > 0) then
+        local seg = self.currentSegment
+        local duration = seg.duration > 0 and seg.duration or (seg.startTime > 0 and (GetTime() - seg.startTime) or 0)
+        totalDuration = totalDuration + duration
+        for name, player in pairs(seg.players) do
+            if not playerTotals[name] then playerTotals[name] = CreatePlayerData(name, player.class) end
+            local p = playerTotals[name]
+            p.damage, p.healing = p.damage + player.damage, p.healing + player.healing
+            p.damageTaken, p.interrupts = p.damageTaken + player.damageTaken, p.interrupts + player.interrupts
+            p.deaths = p.deaths + player.deaths
+        end
+        overall.totalDamage = overall.totalDamage + seg.totalDamage
+        overall.totalHealing = overall.totalHealing + seg.totalHealing
+        overall.totalInterrupts = overall.totalInterrupts + seg.totalInterrupts
+    end
+    
+    -- Include all historical segments
     for _, seg in ipairs(self.segments) do
         totalDuration = totalDuration + (seg.duration or 0)
         for name, player in pairs(seg.players) do
@@ -313,14 +362,16 @@ function Meter:CalculateOverall()
             p.damageTaken, p.interrupts = p.damageTaken + player.damageTaken, p.interrupts + player.interrupts
             p.deaths = p.deaths + player.deaths
         end
-        self.overallData.totalDamage = self.overallData.totalDamage + seg.totalDamage
-        self.overallData.totalHealing = self.overallData.totalHealing + seg.totalHealing
-        self.overallData.totalInterrupts = self.overallData.totalInterrupts + seg.totalInterrupts
+        overall.totalDamage = overall.totalDamage + seg.totalDamage
+        overall.totalHealing = overall.totalHealing + seg.totalHealing
+        overall.totalInterrupts = overall.totalInterrupts + seg.totalInterrupts
     end
+    
     if totalDuration > 0 then
         for _, p in pairs(playerTotals) do p.dps, p.hps = p.damage / totalDuration, p.healing / totalDuration end
     end
-    self.overallData.players, self.overallData.duration = playerTotals, totalDuration
+    overall.players, overall.duration = playerTotals, totalDuration
+    return overall
 end
 
 -- For historical data (non-live)
@@ -410,7 +461,7 @@ function Meter:Initialize()
         end
     end)
     
-    KDT:Print("DMG Meter: " .. (IS_MIDNIGHT and "C_DamageMeter (live)" or "CLEU"))
+    -- Meter initialized silently
 end
 
 function Meter:SaveOpenWindows()

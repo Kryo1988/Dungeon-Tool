@@ -1,5 +1,14 @@
 # KryosDungeonTool Changelog
 
+## Version 1.8.36 (2025-02-05)
+
+### Fixes
+- **Removed startup message**: Removed "DMG Meter: C_DamageMeter (live)" print on load
+- **Fixed FormatNumber crash**: Fixed Lua error "attempt to compare local 'num' (a secret value)" when hovering meter bars during combat - now properly handles WoW's secret values from C_DamageMeter API
+- **Fixed pet tracking**: Pets are no longer shown as "Player 6" in the meter - only actual players are tracked now
+- **Fixed healing tracking**: Healing is now tracked via CLEU (Combat Log) on WoW 12.0+ since C_DamageMeter doesn't reliably provide live healing data. This ensures healing is properly displayed during and after combat
+- **Overall data always available**: "Overall Data" segment is now always visible at the top of the segment dropdown (right after "Current Segment"), showing combined data from current segment + all historical segments
+
 ## Version 1.8.18 (2026-02-04)
 
 ### New Feature: Damage / Heal Meter

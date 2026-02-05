@@ -664,8 +664,24 @@ function MeterWindowMixin:RefreshLive()
     -- Determine if we show DPS/HPS or total
     local showPerSecond = (self.mode == Meter.MODES.DPS or self.mode == Meter.MODES.HPS)
     
+    -- Filter out pets (they don't have classFilename, or it's nil)
+    -- Also filter out sources where classFilename is a secret value that we can't read
+    local playerSources = {}
+    for _, source in ipairs(combatSources) do
+        local classFile = source.classFilename
+        -- Check if classFilename exists and is readable (not nil, not a secret we can't use)
+        if classFile then
+            local isSecret = issecretvalue and issecretvalue(classFile)
+            -- If it's a secret but exists, it's likely a player (pets have nil classFilename)
+            -- If it's readable and valid, also include
+            if isSecret or (type(classFile) == "string" and classFile ~= "") then
+                table.insert(playerSources, source)
+            end
+        end
+    end
+    
     for i, bar in ipairs(self.bars) do
-        local source = combatSources[i]
+        local source = playerSources[i]
         
         if source then
             bar:Show()
@@ -816,63 +832,6 @@ function MeterWindowMixin:RefreshHistorical()
             bar:Hide()
             bar.playerData = nil
         end
-    end
-end
-
-function MeterWindowMixin:GetOverallData()
-    -- Merge all historical combats into one
-    local overall = {
-        startTime = 0,
-        endTime = GetTime(),
-        duration = 0,
-        name = "Overall",
-        players = {},
-        totalDamage = 0,
-        totalHealing = 0,
-        totalInterrupts = 0,
-        totalDeaths = 0,
-    }
-    
-    -- Merge current combat if exists
-    if Meter.currentCombat then
-        self:MergeCombatData(overall, Meter.currentCombat)
-    end
-    
-    -- Merge history
-    for _, combat in ipairs(Meter.historyCombats) do
-        self:MergeCombatData(overall, combat)
-    end
-    
-    return overall
-end
-
-function MeterWindowMixin:MergeCombatData(target, source)
-    target.duration = target.duration + (source.duration or 0)
-    target.totalDamage = target.totalDamage + (source.totalDamage or 0)
-    target.totalHealing = target.totalHealing + (source.totalHealing or 0)
-    target.totalInterrupts = target.totalInterrupts + (source.totalInterrupts or 0)
-    target.totalDeaths = target.totalDeaths + (source.totalDeaths or 0)
-    
-    for guid, player in pairs(source.players or {}) do
-        if not target.players[guid] then
-            target.players[guid] = {
-                guid = player.guid,
-                name = player.name,
-                class = player.class,
-                damage = 0,
-                healing = 0,
-                damageTaken = 0,
-                interrupts = 0,
-                deaths = 0,
-                spells = {},
-            }
-        end
-        local tp = target.players[guid]
-        tp.damage = tp.damage + (player.damage or 0)
-        tp.healing = tp.healing + (player.healing or 0)
-        tp.damageTaken = tp.damageTaken + (player.damageTaken or 0)
-        tp.interrupts = tp.interrupts + (player.interrupts or 0)
-        tp.deaths = tp.deaths + (player.deaths or 0)
     end
 end
 
