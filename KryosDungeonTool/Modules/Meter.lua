@@ -201,6 +201,32 @@ function Meter:CollectFinalData()
             end
         end
     end
+    
+    -- Interrupts - only update from API if we don't have CLEU data
+    local intSession = C_DamageMeter.GetCombatSessionFromType(sessionType, Enum.DamageMeterType.Interrupts)
+    if intSession and intSession.combatSources then
+        for i, source in ipairs(intSession.combatSources) do
+            -- Skip pets (they have nil classFilename)
+            local classFile = source.classFilename
+            if classFile then
+                local name = source.isLocalPlayer and UnitName("player") or (source.name and UnitName(source.name)) or nil
+                if name then
+                    if not self.currentSegment.players[name] then
+                        local classStr = (not issecretvalue or not issecretvalue(classFile)) and classFile or "UNKNOWN"
+                        self.currentSegment.players[name] = CreatePlayerData(name, classStr)
+                    end
+                    local p = self.currentSegment.players[name]
+                    -- Only update if we don't already have CLEU-tracked interrupt data
+                    if p.interrupts == 0 then
+                        if source.totalAmount and not (issecretvalue and issecretvalue(source.totalAmount)) then
+                            p.interrupts = source.totalAmount
+                            self.currentSegment.totalInterrupts = self.currentSegment.totalInterrupts + source.totalAmount
+                        end
+                    end
+                end
+            end
+        end
+    end
 end
 
 function Meter:GetOrCreatePlayer(segment, name, class)
@@ -246,10 +272,11 @@ function Meter:UpdateCombatState()
     end
 end
 
--- CLEU Processing - Always track healing via CLEU (C_DamageMeter healing is unreliable during combat)
--- On WoW 11.x: Track everything via CLEU
--- On WoW 12.0+: Track healing via CLEU, damage via API (for live display)
+-- CLEU Processing - Only for WoW 11.x (pre-Midnight)
+-- On WoW 12.0+, all tracking uses C_DamageMeter API
 function Meter:ProcessCombatLogEvent(timestamp, subevent, hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags, ...)
+    -- Skip on Midnight - we use C_DamageMeter API instead
+    if IS_MIDNIGHT then return end
     if not self.enabled then return end
     self.processCount = (self.processCount or 0) + 1
     
@@ -264,7 +291,7 @@ function Meter:ProcessCombatLogEvent(timestamp, subevent, hideCaster, sourceGUID
     end
     
     if not self.inCombat and IsTracked(sourceFlags) then
-        if subevent:match("DAMAGE") or subevent:match("HEAL") then self:StartCombat() end
+        if subevent:match("DAMAGE") or subevent:match("HEAL") or subevent == "SPELL_INTERRUPT" then self:StartCombat() end
     end
     
     if not self.currentSegment then return end
@@ -272,26 +299,20 @@ function Meter:ProcessCombatLogEvent(timestamp, subevent, hideCaster, sourceGUID
     local arg12, arg13, arg14, arg15, arg16 = ...
     local trackSource = IsTracked(sourceFlags)
     
-    -- On Midnight, only track healing via CLEU (damage uses C_DamageMeter for live display)
-    -- On older versions, track everything via CLEU
-    if not IS_MIDNIGHT then
-        if subevent == "SWING_DAMAGE" then
-            local amount = arg12 or 0
-            if trackSource and amount > 0 and sourceName then
-                local p = self:GetOrCreatePlayer(self.currentSegment, sourceName, GetClass(sourceGUID))
-                if p then p.damage = p.damage + amount; self.currentSegment.totalDamage = self.currentSegment.totalDamage + amount end
-            end
-        elseif subevent:match("SPELL.*DAMAGE") or subevent == "RANGE_DAMAGE" then
-            local amount = arg15 or 0
-            if trackSource and amount > 0 and sourceName then
-                local p = self:GetOrCreatePlayer(self.currentSegment, sourceName, GetClass(sourceGUID))
-                if p then p.damage = p.damage + amount; self.currentSegment.totalDamage = self.currentSegment.totalDamage + amount end
-            end
+    -- Track everything via CLEU on WoW 11.x
+    if subevent == "SWING_DAMAGE" then
+        local amount = arg12 or 0
+        if trackSource and amount > 0 and sourceName then
+            local p = self:GetOrCreatePlayer(self.currentSegment, sourceName, GetClass(sourceGUID))
+            if p then p.damage = p.damage + amount; self.currentSegment.totalDamage = self.currentSegment.totalDamage + amount end
         end
-    end
-    
-    -- Always track healing via CLEU (more reliable than API during combat)
-    if subevent:match("SPELL.*HEAL") then
+    elseif subevent:match("SPELL.*DAMAGE") or subevent == "RANGE_DAMAGE" then
+        local amount = arg15 or 0
+        if trackSource and amount > 0 and sourceName then
+            local p = self:GetOrCreatePlayer(self.currentSegment, sourceName, GetClass(sourceGUID))
+            if p then p.damage = p.damage + amount; self.currentSegment.totalDamage = self.currentSegment.totalDamage + amount end
+        end
+    elseif subevent:match("SPELL.*HEAL") then
         local amount, over = arg15 or 0, arg16 or 0
         if trackSource and amount > over and sourceName then
             local p = self:GetOrCreatePlayer(self.currentSegment, sourceName, GetClass(sourceGUID))
@@ -416,14 +437,7 @@ function Meter:Initialize()
     self.eventFrame = KDT.CombatLogFrame
     if KDT.DB and KDT.DB.meter then self.enabled = KDT.DB.meter.enabled ~= false end
     
-    if IS_MIDNIGHT then
-        local eventFrame = CreateFrame("Frame")
-        eventFrame:RegisterEvent("DAMAGE_METER_COMBAT_SESSION_UPDATED")
-        eventFrame:RegisterEvent("DAMAGE_METER_CURRENT_SESSION_UPDATED")
-        eventFrame:SetScript("OnEvent", function(_, event, ...)
-            if self.enabled then self:UpdateCombatState(); self:RefreshAllWindows() end
-        end)
-    end
+    -- Note: DAMAGE_METER events are registered at file load time (see bottom of file)
     
     self.updateTicker = C_Timer.NewTicker(0.1, function()
         if self.enabled then
@@ -485,3 +499,17 @@ end
 function Meter:Reset() self.currentSegment = nil; self.inCombat = false; self.viewingSegmentIndex = 0; self:RefreshAllWindows() end
 function Meter:ResetAll() self:Reset(); wipe(self.segments); self.overallData = nil; self:RefreshAllWindows() end
 function Meter:RefreshAllWindows() for _, w in pairs(self.windows) do if w.Refresh then w:Refresh() end end end
+
+-- Register DAMAGE_METER events at file load time for WoW 12.0+
+-- This MUST happen at load time, not in Initialize(), to avoid ADDON_ACTION_FORBIDDEN
+if IS_MIDNIGHT then
+    local dmEventFrame = CreateFrame("Frame")
+    dmEventFrame:RegisterEvent("DAMAGE_METER_COMBAT_SESSION_UPDATED")
+    dmEventFrame:RegisterEvent("DAMAGE_METER_CURRENT_SESSION_UPDATED")
+    dmEventFrame:SetScript("OnEvent", function(_, event, ...)
+        if Meter.enabled then
+            Meter:UpdateCombatState()
+            Meter:RefreshAllWindows()
+        end
+    end)
+end

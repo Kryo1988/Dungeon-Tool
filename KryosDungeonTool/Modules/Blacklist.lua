@@ -303,8 +303,8 @@ function KDT:AlertBlacklisted(name, reason)
     -- Play sound
     if self.DB and self.DB.settings then
         if self.DB.settings.customSound then
-            -- Try to play custom sound
-            local soundFile = "Interface\\AddOns\\KryosDungeonTool\\intruder.mp3"
+            -- Try to play custom sound from Sounds folder
+            local soundFile = "Interface\\AddOns\\KryosDungeonTool\\Sounds\\intruder.mp3"
             local willPlay, handle = PlaySoundFile(soundFile, "Master")
             if not willPlay then
                 -- Fallback to default sound

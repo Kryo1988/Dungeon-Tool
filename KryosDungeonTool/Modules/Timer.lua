@@ -1,7 +1,6 @@
 -- Kryos Dungeon Tool
--- Modules/Timer.lua - External M+ Timer (v1.8.10)
--- Fixes: Blizzard timer only hidden in M+, no empty space, dungeon name display, 
---        customizable colors, completion time preservation
+-- Modules/Timer.lua - External M+ Timer (v2.0) - New Design
+-- Features: Custom frame design with textures, modern layout, WoW 12.0 API
 
 local addonName, KDT = ...
 
@@ -24,6 +23,13 @@ KDT.timerState = {
     completedTime = 0,
     inInstance = false,
     inMythicPlus = false, -- Track M+ state specifically
+    -- Sound tracking
+    lastTimeTier = 0, -- 0=not started, 1=failed, 2=+1, 3=+2, 4=+3
+    soundsPlayed = {
+        cd2 = false,
+        cd1 = false,
+        failed = false,
+    }
 }
 
 -- Default colors (all customizable)
@@ -96,17 +102,24 @@ end
 function KDT:CreateExternalTimer()
     if self.ExternalTimer then return self.ExternalTimer end
     
-    local WIDTH = 280
+    local WIDTH = 600
+    local HEIGHT = 340
     local db = self.DB.timer
     
-    -- Main frame (transparent)
+    -- Main frame
     local f = CreateFrame("Frame", "KryosExternalTimer", UIParent)
-    f:SetSize(WIDTH, 220)
-    f:SetPoint("RIGHT", UIParent, "RIGHT", -50, 100)
+    f:SetSize(WIDTH, HEIGHT)
+    f:SetPoint("TOP", UIParent, "TOP", 0, -100)
     f:SetMovable(true)
-    f:SetClampedToScreen(true)
+    -- SetClampedToScreen removed - allow free movement
     f:EnableMouse(true)
     f:SetFrameStrata("MEDIUM")
+    f:SetFrameLevel(100)
+    
+    -- Background frame texture
+    f.bg = f:CreateTexture(nil, "BACKGROUND")
+    f.bg:SetTexture("Interface\\AddOns\\KryosDungeonTool\\Textures\\rahmen")
+    f.bg:SetAllPoints(f)
     
     -- Dragging
     f:RegisterForDrag("LeftButton")
@@ -121,17 +134,19 @@ function KDT:CreateExternalTimer()
         KDT.DB.timer.position = {point = point, relPoint = relPoint, x = x, y = y}
     end)
     
-    local yOffset = -5
-    local font = db.font or "Fonts\\FRIZQT__.TTF"
+    local font = db.customFont or db.font or "Fonts\\FRIZQT__.TTF"
+    
+    -- Content area inside the frame (accounting for frame borders)
+    local contentTop = -70  -- Tiefer gesetzt von -60
+    local contentWidth = WIDTH - 120
     
     -- ==================== OPTIONS BUTTON (top right corner) ====================
     f.optionsBtn = CreateFrame("Button", nil, f)
-    f.optionsBtn:SetSize(20, 20)
-    f.optionsBtn:SetPoint("TOPRIGHT", 0, 0)
+    f.optionsBtn:SetSize(24, 24)
+    f.optionsBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -100, -65)  -- Von -80 auf -100 (weiter links)
     f.optionsBtn:SetNormalTexture("Interface\\Buttons\\UI-OptionsButton")
     f.optionsBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
     f.optionsBtn:SetScript("OnClick", function(self, button)
-        -- Direct open Timer Settings on left click
         KDT:ShowTimerSettings()
     end)
     f.optionsBtn:SetScript("OnEnter", function(self)
@@ -142,40 +157,112 @@ function KDT:CreateExternalTimer()
     end)
     f.optionsBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
     
-    -- ==================== ROW 0: Dungeon Name & Key Level ====================
-    f.headerFrame = CreateFrame("Frame", nil, f)
-    f.headerFrame:SetSize(WIDTH - 25, 22) -- Leave space for options button
-    f.headerFrame:SetPoint("TOP", -10, yOffset)
-    f.headerFrame:EnableMouse(false)
+    -- ==================== DUNGEON NAME & KEY LEVEL ====================
+    f.dungeonText = f:CreateFontString(nil, "OVERLAY")
+    f.dungeonText:SetFont(font, 18, "OUTLINE")
+    f.dungeonText:SetPoint("TOP", f, "TOP", 0, contentTop)
+    f.dungeonText:SetTextColor(1, 1, 1, 1)  -- White
+    f.dungeonText:SetText("Dungeon Name")
     
-    f.dungeonText = f.headerFrame:CreateFontString(nil, "OVERLAY")
-    f.dungeonText:SetFont(font, db.headerFontSize or 14, "OUTLINE")
-    f.dungeonText:SetPoint("CENTER", 0, 0)
-    f.dungeonText:SetText("")
-    f.dungeonText:SetTextColor(unpack(self:GetTimerColor("dungeonName")))
+    -- ==================== AFFIXES ====================
+    f.affixText = f:CreateFontString(nil, "OVERLAY")
+    f.affixText:SetFont(font, 14, "OUTLINE")
+    f.affixText:SetPoint("TOP", f.dungeonText, "BOTTOM", 0, -8)
+    f.affixText:SetTextColor(1, 0.82, 0, 1)  -- Gold
+    f.affixText:SetText("Fortified / Raging / Volcanic")
     
-    yOffset = yOffset - 22
-    
-    -- ==================== ROW 1: Main Timer ====================
+    -- ==================== MAIN TIMER (Large, Center) ====================
     f.timerText = f:CreateFontString(nil, "OVERLAY")
-    f.timerText:SetFont(font, db.fontSize or 28, "OUTLINE")
-    f.timerText:SetPoint("TOP", 0, yOffset)
-    f.timerText:SetText("0:00 / 0:00")
+    f.timerText:SetFont(font, 52, "THICKOUTLINE")
+    f.timerText:SetPoint("CENTER", f, "CENTER", 0, 10)
+    f.timerText:SetTextColor(0, 1, 0, 1)  -- Green
+    f.timerText:SetText("24:31")
     
-    -- Death counter with tooltip
+    -- ==================== SPLIT TIMES (+3, +2, +1) - Horizontal zentriert ====================
+    local splitTimesYOffset = -65  -- Unter dem Main Timer
+    local splitTimesSpacing = 100   -- Abstand zwischen den Zeiten
+    
+    -- +3 Time (Links)
+    f.time3Text = f:CreateFontString(nil, "OVERLAY")
+    f.time3Text:SetFont(font, 18, "OUTLINE")
+    f.time3Text:SetPoint("CENTER", f.timerText, "CENTER", -splitTimesSpacing, splitTimesYOffset)
+    f.time3Text:SetTextColor(0, 1, 0, 1)  -- Green
+    f.time3Text:SetText("+3: 18:00")
+    
+    -- +2 Time (Mitte)
+    f.time2Text = f:CreateFontString(nil, "OVERLAY")
+    f.time2Text:SetFont(font, 18, "OUTLINE")
+    f.time2Text:SetPoint("CENTER", f.timerText, "CENTER", 0, splitTimesYOffset)
+    f.time2Text:SetTextColor(1, 1, 0, 1)  -- Yellow
+    f.time2Text:SetText("+2: 24:00")
+    
+    -- +1 Time (Rechts)
+    f.time1Text = f:CreateFontString(nil, "OVERLAY")
+    f.time1Text:SetFont(font, 18, "OUTLINE")
+    f.time1Text:SetPoint("CENTER", f.timerText, "CENTER", splitTimesSpacing, splitTimesYOffset)
+    f.time1Text:SetTextColor(1, 0.5, 0, 1)  -- Orange
+    f.time1Text:SetText("+1: 30:00")
+    
+    -- ==================== PROGRESS BARS (Three small bars ABOVE split times) ====================
+    local barWidth = 80   -- Kleiner: von 150 auf 80
+    local barHeight = 8   -- Kleiner: von 12 auf 8
+    local barsYOffset = -45  -- Über den Split-Times (20px höher als Split-Times)
+    
+    -- +3 Bar (Links, über +3 Time)
+    f.bar3Bg = f:CreateTexture(nil, "BACKGROUND")
+    f.bar3Bg:SetSize(barWidth, barHeight)
+    f.bar3Bg:SetPoint("CENTER", f.timerText, "CENTER", -splitTimesSpacing, barsYOffset)
+    f.bar3Bg:SetColorTexture(0.15, 0.15, 0.15, 1)
+    
+    f.bar3 = f:CreateTexture(nil, "ARTWORK")
+    f.bar3:SetPoint("LEFT", f.bar3Bg, "LEFT", 0, 0)
+    f.bar3:SetSize(1, barHeight)
+    f.bar3:SetColorTexture(0, 0.8, 0, 1)  -- Green
+    
+    -- +2 Bar (Mitte, über +2 Time)
+    f.bar2Bg = f:CreateTexture(nil, "BACKGROUND")
+    f.bar2Bg:SetSize(barWidth, barHeight)
+    f.bar2Bg:SetPoint("CENTER", f.timerText, "CENTER", 0, barsYOffset)
+    f.bar2Bg:SetColorTexture(0.15, 0.15, 0.15, 1)
+    
+    f.bar2 = f:CreateTexture(nil, "ARTWORK")
+    f.bar2:SetPoint("LEFT", f.bar2Bg, "LEFT", 0, 0)
+    f.bar2:SetSize(1, barHeight)
+    f.bar2:SetColorTexture(1, 1, 0, 1)  -- Yellow
+    
+    -- +1 Bar (Rechts, über +1 Time)
+    f.bar1Bg = f:CreateTexture(nil, "BACKGROUND")
+    f.bar1Bg:SetSize(barWidth, barHeight)
+    f.bar1Bg:SetPoint("CENTER", f.timerText, "CENTER", splitTimesSpacing, barsYOffset)
+    f.bar1Bg:SetColorTexture(0.15, 0.15, 0.15, 1)
+    
+    f.bar1 = f:CreateTexture(nil, "ARTWORK")
+    f.bar1:SetPoint("LEFT", f.bar1Bg, "LEFT", 0, 0)
+    f.bar1:SetSize(1, barHeight)
+    f.bar1:SetColorTexture(1, 0.5, 0, 1)  -- Orange
+
+
+    
+    -- ==================== DEATHS (Bottom Left with Icon) ====================
+    f.deathIcon = f:CreateTexture(nil, "OVERLAY")
+    f.deathIcon:SetTexture("Interface\\AddOns\\KryosDungeonTool\\Textures\\death")
+    f.deathIcon:SetSize(24, 24)
+    f.deathIcon:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 150, 65)  -- Von 80 auf 65 (tiefer)
+    
+    f.deathText = f:CreateFontString(nil, "OVERLAY")
+    f.deathText:SetFont(font, 16, "OUTLINE")
+    f.deathText:SetPoint("LEFT", f.deathIcon, "RIGHT", 8, 0)
+    f.deathText:SetTextColor(1, 0, 0, 1)  -- Red
+    f.deathText:SetText("Deaths: 2 (-10s)")
+    
+    -- Death tooltip frame
     f.deathFrame = CreateFrame("Frame", nil, f)
-    f.deathFrame:SetSize(40, 25)
-    f.deathFrame:SetPoint("TOPRIGHT", -25, yOffset) -- Leave space for options button
-    
-    f.deathText = f.deathFrame:CreateFontString(nil, "OVERLAY")
-    f.deathText:SetFont(font, db.deathFontSize or 16, "OUTLINE")
-    f.deathText:SetPoint("CENTER")
-    f.deathText:SetText("[0]")
-    
-    -- Death tooltip
+    f.deathFrame:SetSize(150, 30)
+    f.deathFrame:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 150, 60)  -- Von 75 auf 60
+    f.deathFrame:EnableMouse(true)
     f.deathFrame:SetScript("OnEnter", function(self)
         if #KDT.timerState.deathLog > 0 then
-            GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
             GameTooltip:SetText("Deaths", 1, 0.8, 0)
             for _, death in ipairs(KDT.timerState.deathLog) do
                 local classColor = RAID_CLASS_COLORS[death.class] or {r=1, g=1, b=1}
@@ -191,127 +278,21 @@ function KDT:CreateExternalTimer()
     end)
     f.deathFrame:SetScript("OnLeave", function() GameTooltip:Hide() end)
     
-    yOffset = yOffset - 35
+    -- ==================== TRASH PERCENTAGE (Bottom Right with Icon) ====================
+    f.trashIcon = f:CreateTexture(nil, "OVERLAY")
+    f.trashIcon:SetTexture("Interface\\AddOns\\KryosDungeonTool\\Textures\\trash")
+    f.trashIcon:SetSize(24, 24)
+    f.trashIcon:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -250, 65)  -- Von 80 auf 65 (tiefer)
     
-    -- ==================== ROW 2: Three Timer Bars ====================
-    local barWidth = (WIDTH - 20) / 3 - 2
-    local barHeight = 10
+    f.trashText = f:CreateFontString(nil, "OVERLAY")
+    f.trashText:SetFont(font, 16, "OUTLINE")
+    f.trashText:SetPoint("LEFT", f.trashIcon, "RIGHT", 8, 0)
+    f.trashText:SetTextColor(0, 0.8, 1, 1)  -- Cyan
+    f.trashText:SetText("Trash: 67%")
     
-    f.splitBars = CreateFrame("Frame", nil, f)
-    f.splitBars:SetSize(WIDTH - 16, barHeight + 20)
-    f.splitBars:SetPoint("TOP", 0, yOffset)
-    f.splitBars:EnableMouse(false) -- Let clicks pass through
-    
-    -- +3 Bar
-    f.bar3Bg = f.splitBars:CreateTexture(nil, "BACKGROUND")
-    f.bar3Bg:SetSize(barWidth, barHeight)
-    f.bar3Bg:SetPoint("TOPLEFT", 0, 0)
-    f.bar3Bg:SetColorTexture(0.15, 0.15, 0.15, 1)
-    
-    f.bar3 = f.splitBars:CreateTexture(nil, "ARTWORK")
-    f.bar3:SetPoint("TOPLEFT", f.bar3Bg, "TOPLEFT", 0, 0)
-    f.bar3:SetSize(1, barHeight)
-    f.bar3:SetColorTexture(0, 0.8, 0, 1)
-    
-    f.time3 = f.splitBars:CreateFontString(nil, "OVERLAY")
-    f.time3:SetFont(font, 11, "OUTLINE")
-    f.time3:SetPoint("TOP", f.bar3Bg, "BOTTOM", 0, -2)
-    f.time3:SetTextColor(unpack(self:GetTimerColor("splitTimePlus3")))
-    
-    -- +2 Bar
-    f.bar2Bg = f.splitBars:CreateTexture(nil, "BACKGROUND")
-    f.bar2Bg:SetSize(barWidth, barHeight)
-    f.bar2Bg:SetPoint("LEFT", f.bar3Bg, "RIGHT", 3, 0)
-    f.bar2Bg:SetColorTexture(0.15, 0.15, 0.15, 1)
-    
-    f.bar2 = f.splitBars:CreateTexture(nil, "ARTWORK")
-    f.bar2:SetPoint("TOPLEFT", f.bar2Bg, "TOPLEFT", 0, 0)
-    f.bar2:SetSize(1, barHeight)
-    f.bar2:SetColorTexture(1, 1, 0, 1)
-    
-    f.time2 = f.splitBars:CreateFontString(nil, "OVERLAY")
-    f.time2:SetFont(font, 11, "OUTLINE")
-    f.time2:SetPoint("TOP", f.bar2Bg, "BOTTOM", 0, -2)
-    f.time2:SetTextColor(unpack(self:GetTimerColor("splitTimePlus2")))
-    
-    -- +1 Bar
-    f.bar1Bg = f.splitBars:CreateTexture(nil, "BACKGROUND")
-    f.bar1Bg:SetSize(barWidth, barHeight)
-    f.bar1Bg:SetPoint("LEFT", f.bar2Bg, "RIGHT", 3, 0)
-    f.bar1Bg:SetColorTexture(0.15, 0.15, 0.15, 1)
-    
-    f.bar1 = f.splitBars:CreateTexture(nil, "ARTWORK")
-    f.bar1:SetPoint("TOPLEFT", f.bar1Bg, "TOPLEFT", 0, 0)
-    f.bar1:SetSize(1, barHeight)
-    f.bar1:SetColorTexture(1, 0.5, 0, 1)
-    
-    f.time1 = f.splitBars:CreateFontString(nil, "OVERLAY")
-    f.time1:SetFont(font, 11, "OUTLINE")
-    f.time1:SetPoint("TOP", f.bar1Bg, "BOTTOM", 0, -2)
-    f.time1:SetTextColor(unpack(self:GetTimerColor("splitTimePlus1")))
-    
-    yOffset = yOffset - 35
-    
-    -- ==================== ROW 3: Forces ====================
-    f.forcesRow = CreateFrame("Frame", nil, f)
-    f.forcesRow:SetSize(WIDTH - 16, 40)
-    f.forcesRow:SetPoint("TOP", 0, yOffset)
-    f.forcesRow:EnableMouse(false) -- Let clicks pass through
-    
-    f.forcesText = f.forcesRow:CreateFontString(nil, "OVERLAY")
-    f.forcesText:SetFont(font, 12, "OUTLINE")
-    f.forcesText:SetPoint("TOP", 0, 0)
-    f.forcesText:SetText("0.00%")
-    
-    f.forcesBarBg = f.forcesRow:CreateTexture(nil, "BACKGROUND")
-    f.forcesBarBg:SetSize(WIDTH - 16, 16)
-    f.forcesBarBg:SetPoint("TOP", f.forcesText, "BOTTOM", 0, -2)
-    f.forcesBarBg:SetColorTexture(0.15, 0.15, 0.15, 1)
-    
-    f.forcesBar = f.forcesRow:CreateTexture(nil, "ARTWORK")
-    f.forcesBar:SetPoint("TOPLEFT", f.forcesBarBg, "TOPLEFT", 0, 0)
-    f.forcesBar:SetSize(1, 16)
-    f.forcesBar:SetColorTexture(1, 0.8, 0, 1)
-    
-    yOffset = yOffset - 42
-    
-    -- ==================== ROW 4: Bosses ====================
-    f.bossContainer = CreateFrame("Frame", nil, f)
-    f.bossContainer:SetSize(WIDTH - 16, 120)
-    f.bossContainer:SetPoint("TOP", 0, yOffset)
-    f.bossContainer:EnableMouse(false) -- Let clicks pass through
-    
-    f.bossFrames = {}
-    for i = 1, 8 do
-        local bf = CreateFrame("Frame", nil, f.bossContainer)
-        bf:SetSize(WIDTH - 16, 16)
-        bf:SetPoint("TOPRIGHT", 0, -(i-1) * 17)
-        bf:EnableMouse(false) -- Let clicks pass through
-        
-        -- Split time (left)
-        bf.splitTime = bf:CreateFontString(nil, "OVERLAY")
-        bf.splitTime:SetFont(font, 12, "OUTLINE")
-        bf.splitTime:SetPoint("LEFT", 0, 0)
-        bf.splitTime:SetText("")
-        
-        -- Kill time 
-        bf.killTime = bf:CreateFontString(nil, "OVERLAY")
-        bf.killTime:SetFont(font, 12, "OUTLINE")
-        bf.killTime:SetPoint("LEFT", 50, 0)
-        bf.killTime:SetText("")
-        
-        -- Boss name (right)
-        bf.name = bf:CreateFontString(nil, "OVERLAY")
-        bf.name:SetFont(font, 12, "OUTLINE")
-        bf.name:SetPoint("RIGHT", 0, 0)
-        bf.name:SetText("")
-        
-        bf:Hide()
-        f.bossFrames[i] = bf
-    end
-    
+    -- Store reference
     self.ExternalTimer = f
-    
+    f:Hide()  -- Hidden by default
     -- Apply saved position
     if db.position then
         local pos = db.position
@@ -472,143 +453,170 @@ function KDT:UpdateExternalTimer()
     local plus2Time = timeLimit * 0.8
     local plus1Time = timeLimit
     
-    -- ==================== Dungeon Header ====================
+    -- ==================== Dungeon Name & Key Level ====================
+    local headerText = dungeonName
+    if level and level > 0 then
+        headerText = string.format("%s |cFF80FF80+%d|r", dungeonName, level)
+    end
     if isPreviewMode then
-        -- Show preview mode indicator
-        f.dungeonText:SetText("|cFFFF8800[PREVIEW]|r " .. string.format("|cFF80FF80+%d|r %s", level, dungeonName))
-        f.dungeonText:SetTextColor(unpack(self:GetTimerColor("dungeonName")))
-        f.headerFrame:Show()
-    elseif dungeonName and dungeonName ~= "" and dungeonName ~= "Unknown" then
-        local headerText = dungeonName
-        if level and level > 0 then
-            headerText = string.format("|cFF80FF80+%d|r %s", level, dungeonName)
+        headerText = "|cFFFF8800[PREVIEW]|r " .. headerText
+    end
+    f.dungeonText:SetText(headerText)
+    
+    -- ==================== Affixes ====================
+    -- Get affixes from C_ChallengeMode API (WoW 12.0)
+    local affixText = ""
+    if inMythicPlus or (state.active and state.level > 0) then
+        local affixes = C_MythicPlus.GetCurrentAffixes()
+        if affixes and #affixes > 0 then
+            local affixNames = {}
+            for i, affix in ipairs(affixes) do
+                local affixInfo = C_ChallengeMode.GetAffixInfo(affix.id)
+                if affixInfo and affixInfo.name then
+                    table.insert(affixNames, affixInfo.name)
+                end
+            end
+            affixText = table.concat(affixNames, " / ")
         end
-        f.dungeonText:SetText(headerText)
-        f.dungeonText:SetTextColor(unpack(self:GetTimerColor("dungeonName")))
-        f.headerFrame:Show()
-    else
-        f.dungeonText:SetText("")
-        f.headerFrame:Hide()
     end
     
-    -- ==================== Main Timer ====================
-    f.timerText:SetText(self:FormatTime(elapsed) .. " / " .. self:FormatTime(timeLimit))
+    -- Fallback to placeholder if no affixes
+    if affixText == "" then
+        affixText = "Fortified / Raging / Volcanic"
+    end
+    f.affixText:SetText(affixText)
     
+    -- ==================== Main Timer ====================
+    f.timerText:SetText(self:FormatTime(elapsed))
+    
+    -- Color based on time thresholds
+    local currentTimeTier = 0
     if state.completed then
         if elapsed <= plus3Time then
             f.timerText:SetTextColor(unpack(self:GetTimerColor("timerPlus3")))
+            currentTimeTier = 4
         elseif elapsed <= plus2Time then
             f.timerText:SetTextColor(unpack(self:GetTimerColor("timerPlus2")))
+            currentTimeTier = 3
         elseif elapsed <= plus1Time then
             f.timerText:SetTextColor(unpack(self:GetTimerColor("timerPlus1")))
+            currentTimeTier = 2
         else
             f.timerText:SetTextColor(unpack(self:GetTimerColor("timerFail")))
+            currentTimeTier = 1
         end
     elseif elapsed < plus3Time then
         f.timerText:SetTextColor(unpack(self:GetTimerColor("timerPlus3")))
+        currentTimeTier = 4
     elseif elapsed < plus2Time then
         f.timerText:SetTextColor(unpack(self:GetTimerColor("timerPlus2")))
+        currentTimeTier = 3
     elseif elapsed < plus1Time then
         f.timerText:SetTextColor(unpack(self:GetTimerColor("timerPlus1")))
+        currentTimeTier = 2
     else
         f.timerText:SetTextColor(unpack(self:GetTimerColor("timerFail")))
+        currentTimeTier = 1
     end
     
-    -- ==================== Deaths ====================
-    f.deathText:SetText("[" .. (deaths or 0) .. "]")
-    f.deathText:SetTextColor(unpack(self:GetTimerColor("deaths")))
+    -- ==================== Sound Alerts ====================
+    if db.soundEnabled and inMythicPlus and not state.completed then
+        -- +3 to +2 drop (Tier 4 to 3)
+        if state.lastTimeTier == 4 and currentTimeTier == 3 and db.soundCD2 and not state.soundsPlayed.cd2 then
+            PlaySoundFile("Interface\\AddOns\\KryosDungeonTool\\Sounds\\cd2.wav", "Master")
+            state.soundsPlayed.cd2 = true
+            self:Print("|cFFFF8800Timer Alert:|r +3 time lost!")
+        end
+        
+        -- +2 to +1 drop (Tier 3 to 2)
+        if state.lastTimeTier == 3 and currentTimeTier == 2 and db.soundCD1 and not state.soundsPlayed.cd1 then
+            PlaySoundFile("Interface\\AddOns\\KryosDungeonTool\\Sounds\\cd1.wav", "Master")
+            state.soundsPlayed.cd1 = true
+            self:Print("|cFFFF8800Timer Alert:|r +2 time lost!")
+        end
+        
+        -- Failed (Tier 2 to 1)
+        if state.lastTimeTier == 2 and currentTimeTier == 1 and db.soundFailed and not state.soundsPlayed.failed then
+            PlaySoundFile("Interface\\AddOns\\KryosDungeonTool\\Sounds\\failed.wav", "Master")
+            state.soundsPlayed.failed = true
+            self:Print("|cFFFF0000Timer Alert:|r Key failed!")
+        end
+        
+        -- Update last tier
+        state.lastTimeTier = currentTimeTier
+    end
     
-    -- ==================== Split Bars ====================
+    -- Reset sound tracking when new run starts
+    if state.lastTimeTier == 0 and currentTimeTier > 0 then
+        state.lastTimeTier = currentTimeTier
+        state.soundsPlayed.cd2 = false
+        state.soundsPlayed.cd1 = false
+        state.soundsPlayed.failed = false
+    end
+    
+    -- ==================== Split Times ====================
+    f.time3Text:SetText("+3: " .. self:FormatTime(plus3Time))
+    f.time2Text:SetText("+2: " .. self:FormatTime(plus2Time))
+    f.time1Text:SetText("+1: " .. self:FormatTime(plus1Time))
+    
+    -- ==================== Progress Bars ====================
     local barWidth = f.bar3Bg:GetWidth()
     
-    f.time3:SetText(self:FormatTime(plus3Time))
-    f.time2:SetText(self:FormatTime(plus2Time))
-    f.time1:SetText(self:FormatTime(plus1Time))
+    -- Update bar colors from settings
+    f.time3Text:SetTextColor(unpack(self:GetTimerColor("splitTimePlus3")))
+    f.time2Text:SetTextColor(unpack(self:GetTimerColor("splitTimePlus2")))
+    f.time1Text:SetTextColor(unpack(self:GetTimerColor("splitTimePlus1")))
     
-    f.time3:SetTextColor(unpack(self:GetTimerColor("splitTimePlus3")))
-    f.time2:SetTextColor(unpack(self:GetTimerColor("splitTimePlus2")))
-    f.time1:SetTextColor(unpack(self:GetTimerColor("splitTimePlus1")))
-    
-    -- +3 Bar
+    -- +3 Bar (fills from 0 to +3 time)
     if elapsed < plus3Time then
         local progress = elapsed / plus3Time
         f.bar3:SetWidth(math.max(1, barWidth * progress))
         f.bar3:SetColorTexture(unpack(self:GetTimerColor("barPlus3")))
     else
         f.bar3:SetWidth(barWidth)
-        f.bar3:SetColorTexture(0.3, 0.5, 0.3, 1)
+        f.bar3:SetColorTexture(0.3, 0.5, 0.3, 0.8)  -- Darker green when complete
     end
     
-    -- +2 Bar
+    -- +2 Bar (fills from +3 time to +2 time)
     if elapsed < plus3Time then
         f.bar2:SetWidth(1)
+        f.bar2:SetColorTexture(unpack(self:GetTimerColor("barPlus2")))
     elseif elapsed < plus2Time then
         local progress = (elapsed - plus3Time) / (plus2Time - plus3Time)
         f.bar2:SetWidth(math.max(1, barWidth * progress))
         f.bar2:SetColorTexture(unpack(self:GetTimerColor("barPlus2")))
     else
         f.bar2:SetWidth(barWidth)
-        f.bar2:SetColorTexture(0.5, 0.5, 0.3, 1)
+        f.bar2:SetColorTexture(0.5, 0.5, 0.3, 0.8)  -- Darker yellow when complete
     end
     
-    -- +1 Bar
+    -- +1 Bar (fills from +2 time to +1 time)
     if elapsed < plus2Time then
         f.bar1:SetWidth(1)
+        f.bar1:SetColorTexture(unpack(self:GetTimerColor("barPlus1")))
     elseif elapsed < plus1Time then
         local progress = (elapsed - plus2Time) / (plus1Time - plus2Time)
         f.bar1:SetWidth(math.max(1, barWidth * progress))
         f.bar1:SetColorTexture(unpack(self:GetTimerColor("barPlus1")))
     else
         f.bar1:SetWidth(barWidth)
-        f.bar1:SetColorTexture(0.5, 0.3, 0.3, 1)
+        f.bar1:SetColorTexture(0.5, 0.3, 0.3, 0.8)  -- Darker orange when complete
     end
+
     
-    -- ==================== Forces ====================
+    -- ==================== Deaths ====================
+    local deathPenalty = deaths * 5  -- 5 seconds per death
+    f.deathText:SetText(string.format("Deaths: %d (-%ds)", deaths, deathPenalty))
+    
+    -- ==================== Trash Percentage ====================
     local forcesPct = state.forcesPercent or forcesPercent or 0
-    local forcesComplete = forcesPct >= 100
+    f.trashText:SetText(string.format("Trash: %.1f%%", forcesPct))
     
-    if state.forcesTotal and state.forcesTotal > 0 then
-        f.forcesText:SetText(string.format("%.1f%% (%d/%d)", forcesPct, state.forcesCurrent or 0, state.forcesTotal))
+    -- Change color when complete
+    if forcesPct >= 100 then
+        f.trashText:SetTextColor(0, 1, 0, 1)  -- Green
     else
-        f.forcesText:SetText(string.format("%.1f%%", forcesPct))
-    end
-    
-    if forcesComplete then
-        f.forcesText:SetTextColor(unpack(self:GetTimerColor("forcesComplete")))
-        f.forcesBar:SetColorTexture(unpack(self:GetTimerColor("forcesBarComplete")))
-    else
-        f.forcesText:SetTextColor(unpack(self:GetTimerColor("forcesIncomplete")))
-        f.forcesBar:SetColorTexture(unpack(self:GetTimerColor("forcesBar")))
-    end
-    
-    local forcesBarWidth = f.forcesBarBg:GetWidth()
-    f.forcesBar:SetWidth(math.max(1, forcesBarWidth * math.min(1, forcesPct / 100)))
-    
-    -- ==================== Bosses ====================
-    local bosses = state.bosses or {}
-    for i, bf in ipairs(f.bossFrames) do
-        local boss = bosses[i]
-        if boss then
-            bf:Show()
-            bf.name:SetText(boss.name or "")
-            
-            if boss.killed then
-                bf.name:SetTextColor(unpack(self:GetTimerColor("bossComplete")))
-                if boss.killTime then
-                    bf.killTime:SetText("[" .. self:FormatTime(boss.killTime) .. "]")
-                    bf.killTime:SetTextColor(unpack(self:GetTimerColor("bossComplete")))
-                else
-                    bf.killTime:SetText("")
-                end
-            else
-                bf.name:SetTextColor(unpack(self:GetTimerColor("bossIncomplete")))
-                bf.killTime:SetText("")
-            end
-            
-            bf.splitTime:SetText("")
-        else
-            bf:Hide()
-        end
+        f.trashText:SetTextColor(0, 0.8, 1, 1)  -- Cyan
     end
 end
 
@@ -778,7 +786,7 @@ function KDT:ShowTimerSettings()
     scrollFrame:SetPoint("BOTTOMRIGHT", -30, 50)
     
     local content = CreateFrame("Frame", nil, scrollFrame)
-    content:SetSize(370, 900)
+    content:SetSize(370, 1100)  -- Von 900 auf 1100 erhöht
     scrollFrame:SetScrollChild(content)
     
     local yPos = -5
@@ -959,6 +967,58 @@ function KDT:ShowTimerSettings()
     CreateSlider("Timer Font Size", "fontSize", 14, 40, 1, 28)
     CreateSlider("Header Font Size", "headerFontSize", 8, 20, 1, 14)
     CreateSlider("Death Font Size", "deathFontSize", 8, 20, 1, 16)
+    
+    yPos = yPos - 5
+    
+    -- Sound Alerts
+    CreateHeader("Sound Alerts")
+    CreateCheckbox("Enable Sound Alerts", "soundEnabled")
+    CreateCheckbox("Play +3 → +2 Drop Sound (cd2.wav)", "soundCD2")
+    CreateCheckbox("Play +2 → +1 Drop Sound (cd1.wav)", "soundCD1")
+    CreateCheckbox("Play Failed Sound (failed.wav)", "soundFailed")
+    
+    -- Sound volume slider
+    local soundNote = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    soundNote:SetPoint("TOPLEFT", 10, yPos)
+    soundNote:SetText("|cFF888888Place sound files in: Interface\\AddOns\\KryosDungeonTool\\Sounds\\|r")
+    soundNote:SetJustifyH("LEFT")
+    yPos = yPos - 20
+    
+    yPos = yPos - 5
+    
+    -- Custom Font
+    CreateHeader("Custom Font")
+    
+    -- Font path input
+    local fontRow = CreateFrame("Frame", nil, content)
+    fontRow:SetSize(360, 60)
+    fontRow:SetPoint("TOPLEFT", 5, yPos)
+    
+    local fontLabel = fontRow:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    fontLabel:SetPoint("TOPLEFT", 0, 0)
+    fontLabel:SetText("Font Path (relative to WoW folder):")
+    
+    local fontInput = CreateFrame("EditBox", nil, fontRow, "InputBoxTemplate")
+    fontInput:SetSize(350, 20)
+    fontInput:SetPoint("TOPLEFT", 0, -20)
+    fontInput:SetAutoFocus(false)
+    fontInput:SetText(db.customFont or "Fonts\\FRIZQT__.TTF")
+    fontInput:SetScript("OnEnterPressed", function(self)
+        db.customFont = self:GetText()
+        self:ClearFocus()
+        KDT:RecreateExternalTimer()
+        KDT:Print("Custom font applied: " .. (db.customFont or "default"))
+    end)
+    fontInput:SetScript("OnEscapePressed", function(self)
+        self:ClearFocus()
+    end)
+    
+    local fontNote = fontRow:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    fontNote:SetPoint("TOPLEFT", 0, -42)
+    fontNote:SetText("|cFF888888Press Enter to apply. Examples: Fonts\\ARIALN.TTF, Fonts\\skurri.ttf|r")
+    fontNote:SetJustifyH("LEFT")
+    
+    yPos = yPos - 68
     
     yPos = yPos - 5
     
@@ -1701,6 +1761,14 @@ function KDT:InitializeTimer()
         showWhenInactive = false,
         position = nil,
         colors = {},
+        -- Sound Alerts
+        soundEnabled = true,
+        soundCD2 = true,      -- +3 to +2 drop sound
+        soundCD1 = true,      -- +2 to +1 drop sound
+        soundFailed = true,   -- Failed sound
+        soundVolume = 1.0,    -- 0.0 to 1.0
+        -- Custom Font
+        customFont = "Fonts\\FRIZQT__.TTF",
     }
     
     for k, v in pairs(defaults) do
