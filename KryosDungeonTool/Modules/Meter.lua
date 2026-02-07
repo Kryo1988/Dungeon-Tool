@@ -500,6 +500,27 @@ function Meter:Reset() self.currentSegment = nil; self.inCombat = false; self.vi
 function Meter:ResetAll() self:Reset(); wipe(self.segments); self.overallData = nil; self:RefreshAllWindows() end
 function Meter:RefreshAllWindows() for _, w in pairs(self.windows) do if w.Refresh then w:Refresh() end end end
 
+-- ==================== ENABLE/DISABLE METER ====================
+function Meter:SetEnabled(enabled)
+    self.enabled = enabled
+    
+    if enabled then
+        -- Meter wurde aktiviert
+        self:UpdateCombatState()
+        self:RefreshAllWindows()
+        KDT:Print("Damage Meter |cFF00FF00enabled|r.")
+    else
+        -- Meter wurde deaktiviert
+        KDT:Print("Damage Meter |cFFFF0000disabled|r.")
+        -- Fenster bleiben geöffnet, zeigen aber keine neuen Daten
+    end
+    
+    -- Save to DB
+    if KDT.DB and KDT.DB.meter then
+        KDT.DB.meter.enabled = enabled
+    end
+end
+
 -- Register DAMAGE_METER events at file load time for WoW 12.0+
 -- This MUST happen at load time, not in Initialize(), to avoid ADDON_ACTION_FORBIDDEN
 if IS_MIDNIGHT then

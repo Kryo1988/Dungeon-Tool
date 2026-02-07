@@ -115,18 +115,6 @@ function KDT:CreateGroupElements(f)
     e.abandonBtn:SetPoint("TOP", e.postBtn, "BOTTOM", 0, -5)
     e.abandonBtn:SetBackdropColor(0.6, 0.15, 0.15, 1)
     e.abandonBtn:SetScript("OnClick", function()
-        StaticPopupDialogs["KRYOS_ABANDON"] = {
-            text = "Are you sure you want to abandon your keystone?",
-            button1 = "Yes",
-            button2 = "No",
-            OnAccept = function()
-                SlashCmdList["MYTHICPLUS"]("abandon")
-                KDT:Print("Keystone abandoned.")
-            end,
-            timeout = 0,
-            whileDead = true,
-            hideOnEscape = true
-        }
         StaticPopup_Show("KRYOS_ABANDON")
     end)
     e.abandonBtn:SetScript("OnEnter", function(self) self:SetBackdropColor(0.7, 0.2, 0.2, 1) end)
@@ -411,14 +399,49 @@ local function CreateMemberCard(parent, member, yOffset, scrollFrame, dungeonDat
         
         if rioDungeonData and rioDungeonData.sortedDungeons then
             for _, dungeonInfo in ipairs(rioDungeonData.sortedDungeons) do
+                local matched = false
+                
                 -- Match by dungeon short name
                 if dungeonInfo.dungeon and dungeonInfo.dungeon.shortName then
                     local rioShort = dungeonInfo.dungeon.shortName:upper()
-                    if rioShort == dungeon.short:upper() or 
-                       rioShort:find(dungeon.short:upper()) then
-                        bestLevel = dungeonInfo.level
-                        break
+                    local ourShort = dungeon.short:upper()
+                    
+                    -- Direct match or contains
+                    if rioShort == ourShort or 
+                       rioShort:find(ourShort) or
+                       ourShort:find(rioShort) then
+                        matched = true
                     end
+                end
+                
+                -- Match by dungeon name
+                if not matched and dungeonInfo.dungeon and dungeonInfo.dungeon.name then
+                    local rioName = dungeonInfo.dungeon.name:upper()
+                    local ourName = dungeon.name:upper()
+                    
+                    -- Check if either name contains the other
+                    if rioName:find(ourName) or ourName:find(rioName) then
+                        matched = true
+                    end
+                end
+                
+                -- Match by mapID (WoW Challenge Mode ID)
+                if not matched and dungeonInfo.dungeon and dungeonInfo.dungeon.id then
+                    if dungeonInfo.dungeon.id == dungeon.mapID then
+                        matched = true
+                    end
+                end
+                
+                -- Match by challengeModeID (alternative RIO field)
+                if not matched and dungeonInfo.challengeModeID then
+                    if dungeonInfo.challengeModeID == dungeon.mapID then
+                        matched = true
+                    end
+                end
+                
+                if matched then
+                    bestLevel = dungeonInfo.level
+                    break
                 end
             end
         end

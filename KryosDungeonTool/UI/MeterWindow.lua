@@ -658,11 +658,29 @@ function MeterWindowMixin:RefreshLive()
     end
     
     local combatSources = session.combatSources
-    local maxValue = session.maxAmount
     local containerWidth = self.barContainer:GetWidth() - 2
     
     -- Determine if we show DPS/HPS or total
     local showPerSecond = (self.mode == Meter.MODES.DPS or self.mode == Meter.MODES.HPS)
+    
+    -- Calculate maxValue based on mode
+    local maxValue
+    if showPerSecond then
+        -- For DPS/HPS modes, find max amountPerSecond from sources
+        maxValue = 0
+        for _, source in ipairs(combatSources) do
+            local val = source.amountPerSecond
+            if val and not (issecretvalue and issecretvalue(val)) then
+                if val > maxValue then
+                    maxValue = val
+                end
+            end
+        end
+        maxValue = math.max(maxValue, 1)
+    else
+        -- For total damage/healing modes, use session max
+        maxValue = session.maxAmount or 1
+    end
     
     -- Filter out pets (they don't have classFilename, or it's nil)
     -- Also filter out sources where classFilename is a secret value that we can't read

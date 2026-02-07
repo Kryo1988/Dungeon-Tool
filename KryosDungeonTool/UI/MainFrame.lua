@@ -35,28 +35,9 @@ function KDT:CreateMainFrame()
     f:SetBackdropBorderColor(0.2, 0.2, 0.25, 1)
     f:Hide()
     
-    -- ESC to close: Use global escape handler that doesn't block other keys
-    f:SetScript("OnShow", function(self)
-        -- Register for ESC key only when shown
-        if not self.escHandler then
-            self.escHandler = CreateFrame("Frame", nil, self)
-            self.escHandler:SetScript("OnKeyDown", function(handler, key)
-                if key == "ESCAPE" then
-                    handler:SetPropagateKeyboardInput(false)
-                    f:Hide()
-                else
-                    handler:SetPropagateKeyboardInput(true)
-                end
-            end)
-        end
-        self.escHandler:EnableKeyboard(true)
-    end)
-    
-    f:SetScript("OnHide", function(self)
-        if self.escHandler then
-            self.escHandler:EnableKeyboard(false)
-        end
-    end)
+    -- ESC to close: Use WoW's native UISpecialFrames system (WoW 12.0 compatible)
+    -- This is the recommended way to handle ESC key for custom frames
+    tinsert(UISpecialFrames, "KryosDTMain")
     
     f.currentTab = "group"
     f.groupElements = {}
@@ -65,6 +46,7 @@ function KDT:CreateMainFrame()
     f.timerElements = {}
     f.bisElements = {}
     f.meterElements = {}
+    f.uitweaksElements = {}
     f.memberRows = {}
     f.blRows = {}
     f.bisRows = {}
@@ -132,7 +114,8 @@ function KDT:CreateMainFrame()
     f.timerTab = CreateTab("M+ TIMER", 196, 75)
     f.meterTab = CreateTab("DMG METER", 274, 80)
     f.bisTab = CreateTab("BiS GEAR", 357, 70)
-    f.blacklistTab = CreateTab("BLACKLIST", 430, 75)
+    f.uitweaksTab = CreateTab("UI TWEAKS", 430, 75)
+    f.blacklistTab = CreateTab("BLACKLIST", 508, 75)
     
     -- Content Area (with clipping to hide overflow)
     f.content = CreateFrame("Frame", nil, f)
@@ -182,7 +165,7 @@ function KDT:CreateMainFrame()
         self.currentTab = tabName
         
         -- Reset all tabs
-        local tabs = {self.groupTab, self.teleportTab, self.timerTab, self.bisTab, self.meterTab, self.blacklistTab}
+        local tabs = {self.groupTab, self.teleportTab, self.timerTab, self.bisTab, self.meterTab, self.uitweaksTab, self.blacklistTab}
         for _, tab in ipairs(tabs) do
             tab:SetBackdropColor(0.08, 0.08, 0.10, 1)
             tab:SetBackdropBorderColor(0.2, 0.2, 0.25, 1)
@@ -197,6 +180,7 @@ function KDT:CreateMainFrame()
         for _, el in pairs(self.timerElements) do if el and el.Hide then el:Hide() end end
         for _, el in pairs(self.bisElements) do if el and el.Hide then el:Hide() end end
         for _, el in pairs(self.meterElements) do if el and el.Hide then el:Hide() end end
+        for _, el in pairs(self.uitweaksElements) do if el and el.Hide then el:Hide() end end
         for _, btn in ipairs(self.teleportButtons) do if btn and btn.Hide then btn:Hide() end end
         
         -- Also hide dynamic rows (member rows, blacklist rows, bis rows)
@@ -248,6 +232,10 @@ function KDT:CreateMainFrame()
             ActivateTab(self.meterTab)
             for _, el in pairs(self.meterElements) do if el and el.Show then el:Show() end end
             if self.RefreshMeter then self:RefreshMeter() end
+        elseif tabName == "uitweaks" then
+            ActivateTab(self.uitweaksTab)
+            for _, el in pairs(self.uitweaksElements) do if el and el.Show then el:Show() end end
+            if self.RefreshUITweaks then self:RefreshUITweaks() end
         else
             ActivateTab(self.blacklistTab)
             for _, el in pairs(self.blacklistElements) do if el and el.Show then el:Show() end end
@@ -261,6 +249,7 @@ function KDT:CreateMainFrame()
     f.timerTab:SetScript("OnClick", function() f:SwitchTab("timer") end)
     f.bisTab:SetScript("OnClick", function() f:SwitchTab("bis") end)
     f.meterTab:SetScript("OnClick", function() f:SwitchTab("meter") end)
+    f.uitweaksTab:SetScript("OnClick", function() f:SwitchTab("uitweaks") end)
     f.blacklistTab:SetScript("OnClick", function() f:SwitchTab("blacklist") end)
     
     self.MainFrame = f

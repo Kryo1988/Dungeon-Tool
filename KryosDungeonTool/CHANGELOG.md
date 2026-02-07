@@ -1,5 +1,76 @@
 # KryosDungeonTool Changelog
 
+## Version 2.3.0 (2026-02-07)
+
+### New Feature: UI Tweaks Module
+
+**Neues UI Tweaks Modul** mit Mouse Cursor Enhancement System.
+
+#### Core Features:
+- **Collapsible Menü-System**: Übersichtliche Organisation aller UI-Anpassungen
+- **Mouse Cursor Enhancement**: Vollständiges Mouse Cursor System mit GCD-, Cast- und Resource-Tracking
+- **WoW 12.0 Kompatibilität**: Alle Features nutzen die aktuellsten WoW APIs
+
+#### Mouse Cursor Features:
+- **Ring Slot System**:
+  - Reticle (Fadenkreuz) mit 10 verschiedenen Designs
+  - Innerer, Haupt- und Äußerer Ring konfigurierbar
+  - Unterstützte Ring-Typen: Main Ring, GCD, Cast, Health, Power, High Contrast Ring
+  
+- **Farbanpassung**:
+  - 3 Farbmodi: Standard, Klassenfarbe, Eigene Farbe
+  - Individuelle Farben für Reticle, Main Ring, GCD, Cast, Health und Power
+  - Color Picker für benutzerdefinierte Farben
+  
+- **Animation & Position**:
+  - GCD und Cast Ring: Konfigurierbare Fill/Drain Animation
+  - Startposition (1-12 Uhr) für GCD und Cast Ringe
+  - Skalierung und Transparenz individuell einstellbar
+  
+- **Erweiterte Optionen**:
+  - "Nur im Kampf anzeigen" Modus
+  - Modifikatortasten (Shift/Strg/Alt) mit Aktionen
+  - High Contrast Ring für bessere Sichtbarkeit
+  
+#### Texturen:
+- Ring_Main.tga - Hauptring-Textur
+- Reticle_Dot.tga - Punkt-Fadenkreuz
+- Reticle_Circle.tga - Kreis-Fadenkreuz
+- UMC_64.tga - Mouse Cursor Basis-Icon
+
+#### Tab Integration:
+- Neuer "UI TWEAKS" Tab im Hauptfenster
+- Nahtlose Integration mit bestehenden Tabs
+- Collapsible Sections für übersichtliche Organisation
+
+#### Technische Details:
+- Modul: `Modules/MouseCursor.lua` - Core Logic mit WoW 12.0 APIs
+- UI: `UI/UITweaksTab.lua` - Collapsible Settings Interface
+- SavedVariables: `KDT.DB.mouseCursor` - Persistente Konfiguration
+- Events: PLAYER_REGEN_DISABLED/ENABLED, UNIT_SPELLCAST_*, UNIT_HEALTH, UNIT_POWER_UPDATE
+
+### Changes:
+- **MainFrame**: Tab-Buttons erweitert (jetzt 7 Tabs)
+- **Core**: Version auf 2.3.0 aktualisiert
+- **TOC**: Neue Module und UI-Dateien registriert
+
+### Future Additions (UI Tweaks):
+Geplante Erweiterungen des UI Tweaks Moduls:
+- Action Bars & Buttons
+- Visibility & Fading (Frames)
+- Nameplates & Names
+- Castbars & Cooldowns
+- Bars & Resources
+- Popups & UI Tweaks
+- Cooldown Panels
+- Action Tracker
+- Minimap & World Map
+- Data Panels
+- Unit Frames
+- Tooltip
+- EQoL Unit Frames
+- Mover
+
 ## Version 1.8.36 (2025-02-05)
 
 ### Fixes

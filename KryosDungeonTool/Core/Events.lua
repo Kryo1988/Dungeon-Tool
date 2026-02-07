@@ -32,6 +32,7 @@ EventUtil.ContinueOnAddOnLoaded(addonName, function()
     KDT:CreateBlacklistElements(KDT.MainFrame)
     KDT:SetupBisTab(KDT.MainFrame)
     KDT:CreateMeterElements(KDT.MainFrame)
+    KDT:CreateUITweaksTab(KDT.MainFrame)
     KDT:SetupTabSwitching(KDT.MainFrame)
     KDT:SetupGroupRefresh(KDT.MainFrame)
     KDT:SetupBlacklistRefresh(KDT.MainFrame)
@@ -57,6 +58,9 @@ EventUtil.ContinueOnAddOnLoaded(addonName, function()
         if el.Hide then el:Hide() end
     end
     for _, el in pairs(KDT.MainFrame.meterElements) do
+        if el.Hide then el:Hide() end
+    end
+    for _, el in pairs(KDT.MainFrame.uitweaksElements) do
         if el.Hide then el:Hide() end
     end
     
@@ -223,6 +227,13 @@ EventUtil.ContinueOnAddOnLoaded(addonName, function()
         
         if KDT.MainFrame and KDT.MainFrame:IsShown() then
             KDT.MainFrame:RefreshGroup()
+        end
+    end)
+    
+    -- Initialize Mouse Cursor module after 3 seconds to avoid protected context issues
+    C_Timer.After(3, function()
+        if KDT.MouseCursor then
+            KDT.MouseCursor:Initialize()
         end
     end)
 end)

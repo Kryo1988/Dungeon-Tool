@@ -63,6 +63,9 @@ local defaults = {
         percentCount = { enabled = true, fontSize = 16, color = {1, 1, 1, 1}, remaining = false },
         realCount = { enabled = true, fontSize = 16, color = {1, 1, 1, 1}, remaining = true, total = false },
     },
+    meter = {
+        enabled = true,
+    },
 }
 
 -- Deep copy function
@@ -253,7 +256,57 @@ function KDT:Print(msg)
 end
 
 -- Version
-KDT.version = "2.2.0"
+KDT.version = "2.3.0"
 
 -- Already alerted (for blacklist)
 KDT.alreadyAlerted = {}
+
+-- ==================== STATIC POPUP DIALOGS ====================
+
+-- Abandon Keystone Dialog (starts vote in active M+ run)
+StaticPopupDialogs["KRYOS_ABANDON"] = {
+    text = "Start abandon vote for the current Mythic+ run?",
+    button1 = "Yes",
+    button2 = "No",
+    OnAccept = function(self)
+        -- Close dialog first
+        StaticPopup_Hide("KRYOS_ABANDON")
+        
+        -- Delayed call to avoid taint issues
+        C_Timer.After(0.1, function()
+            local isActive = C_ChallengeMode.IsChallengeModeActive()
+            
+            if isActive then
+                -- WoW 12.0+: Abandon system uses /abandon command (since Patch 11.2)
+                -- We cannot programmatically execute /abandon as it's a protected command
+                -- Instead, we open the chat box with /abandon pre-filled
+                
+                local chatFrame = DEFAULT_CHAT_FRAME
+                local editBox = chatFrame.editBox or ChatEdit_GetActiveWindow()
+                
+                if editBox then
+                    -- Show the edit box
+                    ChatEdit_ActivateChat(editBox)
+                    -- Set the text to /abandon
+                    editBox:SetText("/abandon")
+                    -- Set cursor to end
+                    editBox:HighlightText(0, 0)
+                    
+                    KDT:Print("Press |cFFFFFF00ENTER|r to start the abandon vote!")
+                else
+                    -- Fallback if edit box not available
+                    KDT:Print("To abandon this keystone, type: |cFFFFFF00/abandon|r and press ENTER")
+                end
+            else
+                KDT:Print("No active Mythic+ run to abandon.")
+            end
+        end)
+    end,
+    OnCancel = function(self)
+        StaticPopup_Hide("KRYOS_ABANDON")
+    end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+    preferredIndex = 3,
+}

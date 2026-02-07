@@ -2,7 +2,7 @@
 ## Title: |cFFFF0000Kryos|r Dungeon Tool
 ## Notes: M+ Group Check, Timer, Damage Meter, BiS Gear Editor, Blacklist & Teleports
 ## Author: Kryos
-## Version: 2.2.0
+## Version: 2.3.0
 ## SavedVariables: KryosDungeonToolDB
 ## IconTexture: Interface\Icons\inv_relics_hourglass
 
@@ -21,6 +21,7 @@ Modules\Blacklist.lua
 Modules\Group.lua
 Modules\Timer.lua
 Modules\Meter.lua
+Modules\MouseCursor.lua
 
 # UI
 UI\MainFrame.lua
@@ -31,6 +32,7 @@ UI\TimerTab.lua
 UI\BisTab.lua
 UI\MeterTab.lua
 UI\MeterWindow.lua
+UI\UITweaksTab.lua
 UI\Minimap.lua
 UI\SlashCommands.lua
 
