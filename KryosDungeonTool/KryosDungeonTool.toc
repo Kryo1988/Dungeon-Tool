@@ -2,9 +2,10 @@
 ## Title: |cFFFF0000Kryos|r Dungeon Tool
 ## Notes: M+ Group Check, Timer, Damage Meter, BiS Gear Editor, Blacklist & Teleports
 ## Author: Kryos
-## Version: 2.3.0
+## Version: 2.6.5
 ## SavedVariables: KryosDungeonToolDB
 ## IconTexture: Interface\Icons\inv_relics_hourglass
+## OptionalDeps: PeaversTalentsData
 
 # Combat Log Frame - MUST BE FIRST to register events before protected context
 Core\CombatLog.lua
@@ -22,6 +23,7 @@ Modules\Group.lua
 Modules\Timer.lua
 Modules\Meter.lua
 Modules\MouseCursor.lua
+Modules\Talents.lua
 
 # UI
 UI\MainFrame.lua

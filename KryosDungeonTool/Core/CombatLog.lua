@@ -29,6 +29,11 @@ CLFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 -- Always register safe events
 CLFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 
+-- WoW 12.0: Register restriction state change (for secret value tracking)
+if IS_MIDNIGHT then
+    pcall(function() CLFrame:RegisterEvent("ADDON_RESTRICTION_STATE_CHANGED") end)
+end
+
 -- Event handler
 CLFrame:SetScript("OnEvent", function(self, event, ...)
     if event == "COMBAT_LOG_EVENT_UNFILTERED" then
@@ -54,5 +59,11 @@ CLFrame:SetScript("OnEvent", function(self, event, ...)
                 KDT.Meter:Initialize()
             end
         end)
+    elseif event == "ADDON_RESTRICTION_STATE_CHANGED" then
+        -- WoW 12.0: Restriction state changed, update meter
+        if KDT.Meter and KDT.Meter.UpdateRestrictionState then
+            KDT.Meter:UpdateRestrictionState()
+            KDT.Meter:RefreshAllWindows()
+        end
     end
 end)

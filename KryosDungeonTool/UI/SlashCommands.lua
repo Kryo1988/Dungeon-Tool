@@ -51,9 +51,12 @@ SlashCmdList["KDT"] = function(msg)
     elseif cmd == "meter" then
         -- Damage meter commands
         local arg = msg:lower():match("^%s*%S+%s+(%S+)")
-        if arg == "reset" then
-            KDT.Meter:Reset()
-            KDT:Print("DMG Meter data reset.")
+        if arg == "reset" or arg == "clearall" then
+            KDT.Meter:ResetAll()
+            KDT:Print("All DMG Meter data cleared.")
+        elseif arg == "clear" then
+            KDT.Meter:ClearCurrent()
+            KDT:Print("Current segment cleared.")
         elseif arg == "toggle" or arg == "window" then
             KDT.Meter:ToggleWindow(1)
         elseif arg == "new" then

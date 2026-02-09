@@ -67,22 +67,84 @@ function KDT:CreateMeterElements(f)
     e.newWindowBtn:SetScript("OnEnter", function(self) self:SetBackdropColor(0.2, 0.45, 0.7, 1) end)
     e.newWindowBtn:SetScript("OnLeave", function(self) self:SetBackdropColor(0.15, 0.35, 0.6, 1) end)
     
-    e.resetBtn = self:CreateButton(enableBox, "Reset Data", 100, 24)
-    e.resetBtn:SetPoint("LEFT", e.newWindowBtn, "RIGHT", 10, 0)
-    e.resetBtn:SetBackdropColor(0.6, 0.15, 0.15, 1)
-    e.resetBtn:SetScript("OnClick", function()
-        Meter:Reset()
-        wipe(Meter.historyCombats)
-        KDT:Print("DMG Meter data reset")
+    e.clearBtn = self:CreateButton(enableBox, "Clear", 100, 24)
+    e.clearBtn:SetPoint("LEFT", e.newWindowBtn, "RIGHT", 10, 0)
+    e.clearBtn:SetBackdropColor(0.6, 0.15, 0.15, 1)
+    e.clearBtn:SetScript("OnClick", function(btn)
+        -- Toggle dropdown
+        if e.clearDropdown and e.clearDropdown:IsShown() then
+            e.clearDropdown:Hide()
+            return
+        end
+        
+        if e.clearDropdown then e.clearDropdown:Hide() end
+        
+        local dropdown = CreateFrame("Frame", nil, btn, "BackdropTemplate")
+        dropdown:SetSize(120, 52)
+        dropdown:SetPoint("TOPLEFT", btn, "BOTTOMLEFT", 0, -2)
+        dropdown:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8X8",
+            edgeFile = "Interface\\Buttons\\WHITE8X8",
+            edgeSize = 1
+        })
+        dropdown:SetBackdropColor(0.1, 0.1, 0.12, 0.98)
+        dropdown:SetBackdropBorderColor(0.3, 0.3, 0.35, 1)
+        dropdown:SetFrameStrata("FULLSCREEN_DIALOG")
+        e.clearDropdown = dropdown
+        
+        local items = {
+            {name = "Clear Current", fn = function()
+                Meter:ClearCurrent()
+                KDT:Print("Current segment cleared")
+            end},
+            {name = "Clear All", fn = function()
+                Meter:ResetAll()
+                KDT:Print("All meter data cleared")
+            end},
+        }
+        
+        for i, item in ipairs(items) do
+            local itemBtn = CreateFrame("Button", nil, dropdown)
+            itemBtn:SetSize(116, 22)
+            itemBtn:SetPoint("TOPLEFT", 2, -2 - (i - 1) * 24)
+            
+            local hl = itemBtn:CreateTexture(nil, "HIGHLIGHT")
+            hl:SetAllPoints()
+            hl:SetColorTexture(0.3, 0.3, 0.4, 0.5)
+            
+            local txt = itemBtn:CreateFontString(nil, "OVERLAY")
+            txt:SetFont("Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
+            txt:SetPoint("LEFT", 6, 0)
+            txt:SetText(item.name)
+            txt:SetTextColor(0.9, 0.9, 0.9)
+            
+            itemBtn:SetScript("OnClick", function()
+                item.fn()
+                dropdown:Hide()
+                e.clearDropdown = nil
+            end)
+        end
+        
+        -- Auto-close when mouse leaves
+        dropdown:SetScript("OnUpdate", function(frame)
+            if not frame:IsMouseOver() and not btn:IsMouseOver() then
+                C_Timer.After(0.5, function()
+                    if frame and frame:IsShown() and not frame:IsMouseOver() then
+                        frame:Hide()
+                        e.clearDropdown = nil
+                    end
+                end)
+            end
+        end)
     end)
-    e.resetBtn:SetScript("OnEnter", function(self) self:SetBackdropColor(0.7, 0.2, 0.2, 1) end)
-    e.resetBtn:SetScript("OnLeave", function(self) self:SetBackdropColor(0.6, 0.15, 0.15, 1) end)
+    e.clearBtn:SetScript("OnEnter", function(self) self:SetBackdropColor(0.7, 0.2, 0.2, 1) end)
+    e.clearBtn:SetScript("OnLeave", function(self) self:SetBackdropColor(0.6, 0.15, 0.15, 1) end)
     
     -- ==================== DISPLAY SETTINGS BOX ====================
     local displayBox = CreateFrame("Frame", nil, c, "BackdropTemplate")
     displayBox:SetPoint("TOPLEFT", enableBox, "BOTTOMLEFT", 0, -10)
     displayBox:SetPoint("TOPRIGHT", enableBox, "BOTTOMRIGHT", 0, -10)
-    displayBox:SetHeight(200)
+    displayBox:SetHeight(230)
     displayBox:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8X8",
         edgeFile = "Interface\\Buttons\\WHITE8X8",
@@ -212,6 +274,11 @@ function KDT:CreateMeterElements(f)
     e.showRankCheck:SetChecked(Meter.defaults.showRank)
     e.showRankCheck:SetScript("OnClick", function(self)
         Meter.defaults.showRank = self:GetChecked()
+        if KDT.DB then
+            KDT.DB.meter = KDT.DB.meter or {}
+            KDT.DB.meter.showRank = self:GetChecked()
+        end
+        Meter:RefreshAllWindows()
     end)
     
     e.showPercentCheck = CreateFrame("CheckButton", nil, displayBox, "UICheckButtonTemplate")
@@ -222,6 +289,11 @@ function KDT:CreateMeterElements(f)
     e.showPercentCheck:SetChecked(Meter.defaults.showPercent)
     e.showPercentCheck:SetScript("OnClick", function(self)
         Meter.defaults.showPercent = self:GetChecked()
+        if KDT.DB then
+            KDT.DB.meter = KDT.DB.meter or {}
+            KDT.DB.meter.showPercent = self:GetChecked()
+        end
+        Meter:RefreshAllWindows()
     end)
     
     e.classColorsCheck = CreateFrame("CheckButton", nil, displayBox, "UICheckButtonTemplate")
@@ -232,13 +304,61 @@ function KDT:CreateMeterElements(f)
     e.classColorsCheck:SetChecked(Meter.defaults.classColors)
     e.classColorsCheck:SetScript("OnClick", function(self)
         Meter.defaults.classColors = self:GetChecked()
+        if KDT.DB then
+            KDT.DB.meter = KDT.DB.meter or {}
+            KDT.DB.meter.classColors = self:GetChecked()
+        end
+        Meter:RefreshAllWindows()
     end)
+    
+    -- "Always Show Self at Top" checkbox
+    e.showSelfTopCheck = CreateFrame("CheckButton", nil, displayBox, "UICheckButtonTemplate")
+    e.showSelfTopCheck:SetSize(20, 20)
+    e.showSelfTopCheck:SetPoint("TOPLEFT", e.showRankCheck, "BOTTOMLEFT", 0, -5)
+    e.showSelfTopCheck.Text:SetText("Always Show Self at Top")
+    e.showSelfTopCheck.Text:SetFontObject("GameFontNormalSmall")
+    local showSelfTop = KDT.DB and KDT.DB.meter and KDT.DB.meter.showSelfTop or false
+    Meter.defaults.showSelfTop = showSelfTop
+    e.showSelfTopCheck:SetChecked(showSelfTop)
+    e.showSelfTopCheck:SetScript("OnClick", function(self)
+        local checked = self:GetChecked()
+        Meter.defaults.showSelfTop = checked
+        if KDT.DB then
+            KDT.DB.meter = KDT.DB.meter or {}
+            KDT.DB.meter.showSelfTop = checked
+        end
+        Meter:RefreshAllWindows()
+    end)
+    
+    -- "Clear on Instance Enter" checkbox
+    e.clearOnEnterCheck = CreateFrame("CheckButton", nil, displayBox, "UICheckButtonTemplate")
+    e.clearOnEnterCheck:SetSize(20, 20)
+    e.clearOnEnterCheck:SetPoint("LEFT", e.showSelfTopCheck, "RIGHT", 140, 0)
+    e.clearOnEnterCheck.Text:SetText("Clear on Instance Enter")
+    e.clearOnEnterCheck.Text:SetFontObject("GameFontNormalSmall")
+    local clearOnEnter = KDT.DB and KDT.DB.meter and KDT.DB.meter.clearOnEnter or false
+    Meter.defaults.clearOnEnter = clearOnEnter
+    e.clearOnEnterCheck:SetChecked(clearOnEnter)
+    e.clearOnEnterCheck:SetScript("OnClick", function(self)
+        local checked = self:GetChecked()
+        Meter.defaults.clearOnEnter = checked
+        if KDT.DB then
+            KDT.DB.meter = KDT.DB.meter or {}
+            KDT.DB.meter.clearOnEnter = checked
+        end
+    end)
+    e.clearOnEnterCheck:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Clear all meter data when entering a new dungeon or raid", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    e.clearOnEnterCheck:SetScript("OnLeave", function() GameTooltip:Hide() end)
     
     -- ==================== MODE SHORTCUTS BOX ====================
     local modeBox = CreateFrame("Frame", nil, c, "BackdropTemplate")
     modeBox:SetPoint("TOPLEFT", displayBox, "BOTTOMLEFT", 0, -10)
     modeBox:SetPoint("TOPRIGHT", displayBox, "BOTTOMRIGHT", 0, -10)
-    modeBox:SetHeight(100)
+    modeBox:SetHeight(130)
     modeBox:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8X8",
         edgeFile = "Interface\\Buttons\\WHITE8X8",
@@ -260,7 +380,9 @@ function KDT:CreateMeterElements(f)
         {mode = Meter.MODES.HEALING, name = "Healing", color = {0.2, 0.8, 0.2}},
         {mode = Meter.MODES.DPS, name = "DPS", color = {0.8, 0.4, 0.2}},
         {mode = Meter.MODES.HPS, name = "HPS", color = {0.4, 0.8, 0.4}},
+        {mode = Meter.MODES.ABSORBS, name = "Absorbs", color = {0.6, 0.8, 1.0}},
         {mode = Meter.MODES.INTERRUPTS, name = "Interrupts", color = {0.2, 0.6, 0.8}},
+        {mode = Meter.MODES.DISPELS, name = "Dispels", color = {0.8, 0.6, 1.0}},
         {mode = Meter.MODES.DEATHS, name = "Deaths", color = {0.5, 0.5, 0.5}},
         {mode = Meter.MODES.DAMAGE_TAKEN, name = "Dmg Taken", color = {0.6, 0.3, 0.6}},
     }
@@ -328,14 +450,14 @@ function KDT:CreateMeterElements(f)
     infoText:SetText([[
 |cFFFFD100Commands:|r
 /kdt meter - Toggle meter window
-/kdt meter reset - Reset all data
+/kdt meter reset - Clear all data
 
 |cFFFFD100Window Controls:|r
 • Drag title bar to move
 • Drag corner to resize
 • Click mode label to toggle (Damage<->DPS)
 • Right-click for context menu
-• Hover for Reset/Report/Overall buttons]])
+• Hover for Clear/Report/Overall buttons]])
 end
 
 -- ==================== SETUP METER REFRESH ====================
