@@ -565,37 +565,40 @@ function MeterWindowMixin:CreateBar(index)
     bg:SetVertexColor(0.1, 0.1, 0.12, 0.8)
     bar.bg = bg
     
-    -- Status bar (colored part)
-    local statusBar = bar:CreateTexture(nil, "ARTWORK")
+    -- Status bar (colored part) - uses StatusBar frame so secret values can be passed
+    -- directly via SetValue() without needing to read them in Lua
+    local statusBar = CreateFrame("StatusBar", nil, bar)
     statusBar:SetPoint("TOPLEFT", 1, -1)
-    statusBar:SetPoint("BOTTOMLEFT", 1, 1)
-    statusBar:SetTexture(settings.barTexture)
+    statusBar:SetPoint("BOTTOMRIGHT", -1, 1)
+    statusBar:SetStatusBarTexture(settings.barTexture)
+    statusBar:SetMinMaxValues(0, 1)
+    statusBar:SetValue(0)
     bar.statusBar = statusBar
     
-    -- Rank number
-    local rank = bar:CreateFontString(nil, "OVERLAY")
+    -- Rank number (on statusBar so text renders above the colored fill)
+    local rank = statusBar:CreateFontString(nil, "OVERLAY")
     rank:SetFont(settings.font, settings.fontSize - 1, settings.fontFlags)
     rank:SetPoint("LEFT", 4, 0)
     rank:SetWidth(14)
     rank:SetJustifyH("LEFT")
     bar.rank = rank
     
-    -- Player name
-    local name = bar:CreateFontString(nil, "OVERLAY")
+    -- Player name (on statusBar)
+    local name = statusBar:CreateFontString(nil, "OVERLAY")
     name:SetFont(settings.font, settings.fontSize, settings.fontFlags)
     name:SetPoint("LEFT", 20, 0)
     name:SetJustifyH("LEFT")
     bar.name = name
     
-    -- Value (right side)
-    local value = bar:CreateFontString(nil, "OVERLAY")
+    -- Value (right side, on statusBar)
+    local value = statusBar:CreateFontString(nil, "OVERLAY")
     value:SetFont(settings.font, settings.fontSize, settings.fontFlags)
     value:SetPoint("RIGHT", -4, 0)
     value:SetJustifyH("RIGHT")
     bar.value = value
     
-    -- Percent
-    local percent = bar:CreateFontString(nil, "OVERLAY")
+    -- Percent (on statusBar)
+    local percent = statusBar:CreateFontString(nil, "OVERLAY")
     percent:SetFont(settings.font, settings.fontSize - 1, settings.fontFlags)
     percent:SetPoint("RIGHT", value, "LEFT", -4, 0)
     percent:SetJustifyH("RIGHT")
@@ -673,32 +676,64 @@ end
 -- Smooth bar animation: time-based lerp for fluid movement like Details
 local BAR_LERP_SPEED = 12  -- Units per second, higher = faster
 
-local function LerpBarWidth(bar, targetWidth)
+local function LerpBarValue(bar, targetValue, maxValue)
+    -- Set the range
+    bar.statusBar:SetMinMaxValues(0, maxValue)
+    
     local now = GetTime()
-    if not bar.currentWidth or not bar:IsShown() or not bar.lastLerpTime then
-        bar.currentWidth = targetWidth
+    if not bar.currentLerpValue or not bar:IsShown() or not bar.lastLerpTime then
+        bar.currentLerpValue = targetValue
         bar.lastLerpTime = now
     else
         local dt = now - bar.lastLerpTime
         bar.lastLerpTime = now
-        local diff = targetWidth - bar.currentWidth
+        local diff = targetValue - bar.currentLerpValue
         if math.abs(diff) < 0.5 then
-            bar.currentWidth = targetWidth
+            bar.currentLerpValue = targetValue
         else
-            -- Exponential decay: smooth approach to target
             local factor = 1 - math.exp(-BAR_LERP_SPEED * dt)
-            bar.currentWidth = bar.currentWidth + diff * factor
+            bar.currentLerpValue = bar.currentLerpValue + diff * factor
         end
     end
-    bar.statusBar:SetWidth(math.max(bar.currentWidth, 2))
+    bar.statusBar:SetValue(math.max(bar.currentLerpValue, 0))
 end
 
--- Helper to get sortable value from a source
+-- Direct StatusBar update for secret values (no lerp possible)
+local function SetBarSecretValue(bar, value, maxValue)
+    bar.statusBar:SetMinMaxValues(0, maxValue)
+    bar.statusBar:SetValue(value)
+    -- Reset lerp state so next readable frame doesn't jump
+    bar.currentLerpValue = nil
+    bar.lastLerpTime = nil
+end
+
+-- Helper to get raw value from a source (secret or not)
+-- Secret values CAN be compared with > < = in WoW 12.0, just not read as numbers
+local function GetRawValue(source, showPerSecond)
+    local val = showPerSecond and source.amountPerSecond or source.totalAmount
+    return val  -- may be nil, secret, or number
+end
+
+-- Helper to get numeric sortable value (returns 0 for secrets)
 local function GetSortableValue(source, showPerSecond)
     local val = showPerSecond and source.amountPerSecond or source.totalAmount
     if val == nil then return 0 end
     if issecretvalue and issecretvalue(val) then return 0 end
     return val
+end
+
+-- Safe comparison for sorting: works with secret values via pcall
+-- WoW 12.0 secret values support > < operators but we pcall for safety
+local function CompareSourceValues(a, b, showPerSecond)
+    local valA = GetRawValue(a, showPerSecond)
+    local valB = GetRawValue(b, showPerSecond)
+    if valA == nil and valB == nil then return false end
+    if valA == nil then return false end
+    if valB == nil then return true end
+    -- pcall the comparison in case secret value ops throw errors
+    local ok, result = pcall(function() return valA > valB end)
+    if ok then return result end
+    return false
 end
 
 function MeterWindowMixin:RefreshLive()
@@ -741,26 +776,89 @@ function MeterWindowMixin:RefreshLive()
     end
     
     local combatSources = session.combatSources
-    local containerWidth = self.barContainer:GetWidth() - 2
-    if containerWidth <= 0 then containerWidth = self.frame:GetWidth() - 10 end
-    if containerWidth <= 0 then containerWidth = self.settings.windowWidth - 10 end
     local showPerSecond = (self.mode == Meter.MODES.DPS or self.mode == Meter.MODES.HPS)
+    local isInGroup = IsInGroup()
     
-    -- Filter out pets FIRST (nil classFilename)
-    local playerSources = {}
-    for _, source in ipairs(combatSources) do
-        local classFile = source.classFilename
-        if classFile then
-            local isSecret = issecretvalue and issecretvalue(classFile)
-            if isSecret or (type(classFile) == "string" and classFile ~= "") then
-                table.insert(playerSources, source)
+    -- Build group member name→class map (only needed in group)
+    local groupMembers = {}
+    if isInGroup then
+        for i = 1, 4 do
+            local token = "party" .. i
+            if UnitExists(token) then
+                local name = UnitName(token)
+                if name then
+                    groupMembers[name] = select(2, UnitClass(token))
+                end
             end
         end
     end
     
-    -- ALWAYS sort by display value (fixes DPS ranking + equal interrupt bars)
+    -- Filter sources:
+    -- Solo: only isLocalPlayer
+    -- Group: isLocalPlayer + sources whose name matches a group member
+    -- Key insight (WoW 12.0): isLocalPlayer and classFilename are non-secret.
+    -- source.name is readable for group members, secret for strangers.
+    local playerSources = {}
+    for _, source in ipairs(combatSources) do
+        local include = false
+        
+        if source.isLocalPlayer then
+            -- Always include self
+            include = true
+            source._resolvedName = UnitName("player")
+            source._resolvedClass = select(2, UnitClass("player"))
+        elseif isInGroup then
+            -- In group: check if source.name is readable and matches a group member
+            local srcName = source.name
+            if srcName and not (issecretvalue and issecretvalue(srcName)) then
+                -- Name is readable → it's a group member or known player
+                if type(srcName) == "string" and groupMembers[srcName] then
+                    include = true
+                    source._resolvedName = srcName
+                    source._resolvedClass = groupMembers[srcName]
+                else
+                    -- Name might include realm: "Name-Realm"
+                    local shortName = srcName and srcName:match("^([^%-]+)")
+                    if shortName and groupMembers[shortName] then
+                        include = true
+                        source._resolvedName = srcName
+                        source._resolvedClass = groupMembers[shortName]
+                    end
+                end
+            else
+                -- Name is secret → stranger, but classFilename is readable
+                -- Use classFilename as a non-secret field (WoW 12.0)
+                -- Try to match via GUID comparison as fallback
+                local srcGUID = source.sourceGUID
+                if srcGUID then
+                    for i = 1, 4 do
+                        local token = "party" .. i
+                        if UnitExists(token) then
+                            local guid = UnitGUID(token)
+                            if guid then
+                                local ok, match = pcall(function() return srcGUID == guid end)
+                                if ok and match then
+                                    include = true
+                                    source._resolvedName = UnitName(token)
+                                    source._resolvedClass = select(2, UnitClass(token))
+                                    break
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        -- Solo and not isLocalPlayer → skip (don't include strangers)
+        
+        if include then
+            table.insert(playerSources, source)
+        end
+    end
+    
+    -- Sort by value using secret-safe comparison (WoW 12.0 secret values support > <)
     table.sort(playerSources, function(a, b)
-        return GetSortableValue(a, showPerSecond) > GetSortableValue(b, showPerSecond)
+        return CompareSourceValues(a, b, showPerSecond)
     end)
     
     -- "Always Show Self at Top" option
@@ -774,16 +872,12 @@ function MeterWindowMixin:RefreshLive()
         end
     end
     
-    -- Calculate maxValue from FILTERED + SORTED playerSources (not raw combatSources)
-    local maxValue = 0
-    local allSecret = true
-    for _, source in ipairs(playerSources) do
-        local val = GetSortableValue(source, showPerSecond)
-        if val > 0 then allSecret = false end
-        if val > maxValue then maxValue = val end
+    -- Get max value from first (highest) player after sort
+    local maxRawValue = playerSources[1] and GetRawValue(playerSources[1], showPerSecond)
+    local hasSecrets = false
+    if maxRawValue ~= nil and issecretvalue and issecretvalue(maxRawValue) then
+        hasSecrets = true
     end
-    maxValue = math.max(maxValue, 1)
-    local numPlayers = #playerSources
     
     -- Store session reference for live spell breakdown
     self.liveSession = session
@@ -795,23 +889,21 @@ function MeterWindowMixin:RefreshLive()
         if source then
             bar:Show()
             
-            -- Get player name
-            local playerName
-            if source.isLocalPlayer then
-                playerName = UnitName("player")
+            -- Name: use resolved name, or pass source.name to widget (works with secrets)
+            local playerName = source._resolvedName
+            if playerName then
+                bar.name:SetText(playerName)
             else
-                local ok, resolved = pcall(function() return UnitName(source.name) end)
-                if ok and resolved then
-                    playerName = resolved
-                else
-                    playerName = "Player " .. i
-                end
+                -- Pass secret name directly to FontString widget (WoW 12.0 supports this)
+                local ok = pcall(function() bar.name:SetText(source.name) end)
+                if not ok then bar.name:SetText("Player " .. i) end
+                playerName = "Player " .. i  -- for playerData
             end
             
-            -- Class color
-            local classFile = source.classFilename
+            -- Class color (respect classColors toggle)
+            local classFile = source._resolvedClass
             local classColors = {0.5, 0.5, 0.5}
-            if classFile and not (issecretvalue and issecretvalue(classFile)) then
+            if Meter.defaults.classColors and classFile then
                 classColors = KDT.CLASS_COLORS[classFile] or classColors
             end
             
@@ -823,26 +915,28 @@ function MeterWindowMixin:RefreshLive()
                 value = source.totalAmount
             end
             
-            -- Calculate bar width with smooth animation
-            local barPercent
-            if allSecret then
-                -- During combat, values are secret (WoW 12.0)
-                -- Blizzard already sorts combatSources by performance
-                -- Use rank-based proportional widths: #1=100%, #2=85%, #3=70%, etc.
-                barPercent = math.max(1.0 - (i - 1) * (0.8 / math.max(numPlayers - 1, 1)), 0.15)
+            -- Calculate bar via StatusBar
+            local rawVal = GetRawValue(source, showPerSecond)
+            if rawVal ~= nil and maxRawValue ~= nil then
+                if hasSecrets then
+                    -- Secret values: pass directly to StatusBar (it handles proportions)
+                    SetBarSecretValue(bar, rawVal, maxRawValue)
+                else
+                    -- Readable values: use lerp animation
+                    local numMax = tonumber(maxRawValue) or 1
+                    local numVal = tonumber(rawVal) or 0
+                    LerpBarValue(bar, numVal, math.max(numMax, 1))
+                end
             else
-                local sortableVal = GetSortableValue(source, showPerSecond)
-                barPercent = maxValue > 0 and (sortableVal / maxValue) or 1.0
+                bar.statusBar:SetMinMaxValues(0, 1)
+                bar.statusBar:SetValue(1)
             end
-            
-            local barWidth = math.max(containerWidth * barPercent, 2)
-            LerpBarWidth(bar, barWidth)
-            bar.statusBar:SetVertexColor(classColors[1], classColors[2], classColors[3], 0.8)
+            bar.statusBar:SetStatusBarColor(classColors[1], classColors[2], classColors[3], 0.8)
             
             bar.rank:SetText(Meter.defaults.showRank and tostring(i) or "")
-            bar.name:SetText(playerName or "Unknown")
+            bar.name:SetText(playerName)
             
-            -- Format value
+            -- Format value text
             if value then
                 local canReadValue = not (issecretvalue and issecretvalue(value))
                 if canReadValue then
@@ -850,6 +944,7 @@ function MeterWindowMixin:RefreshLive()
                     if showPerSecond then valueText = valueText .. "/s" end
                     bar.value:SetText(valueText)
                 else
+                    -- Secret value: use AbbreviateNumbers (Blizzard widget that handles secrets)
                     local ok, formatted = pcall(function() return AbbreviateNumbers(value) end)
                     if ok and formatted then
                         local text = tostring(formatted)
@@ -866,7 +961,7 @@ function MeterWindowMixin:RefreshLive()
             bar.percent:SetText("")
             
             bar.playerData = {
-                name = playerName,
+                name = source._resolvedName or playerName,
                 class = classFile,
                 value = value,
                 source = source,
@@ -875,7 +970,7 @@ function MeterWindowMixin:RefreshLive()
         else
             bar:Hide()
             bar.playerData = nil
-            bar.currentWidth = nil
+            bar.currentLerpValue = nil
             bar.lastLerpTime = nil
         end
     end
@@ -922,10 +1017,6 @@ function MeterWindowMixin:RefreshHistorical()
     local maxValue = data[1] and data[1].value or 1
     maxValue = math.max(maxValue, 1)
     
-    local containerWidth = self.barContainer:GetWidth() - 2
-    if containerWidth <= 0 then containerWidth = self.frame:GetWidth() - 10 end
-    if containerWidth <= 0 then containerWidth = self.settings.windowWidth - 10 end
-    
     for i, bar in ipairs(self.bars) do
         local entry = data[i]
         
@@ -933,12 +1024,13 @@ function MeterWindowMixin:RefreshHistorical()
             bar:Show()
             bar.playerData = entry
             
-            local classColors = KDT.CLASS_COLORS[entry.class] or {0.5, 0.5, 0.5}
+            local classColors = {0.5, 0.5, 0.5}
+            if Meter.defaults.classColors then
+                classColors = KDT.CLASS_COLORS[entry.class] or classColors
+            end
             
-            local barPercent = entry.value / maxValue
-            local barWidth = math.max(containerWidth * barPercent, 2)
-            LerpBarWidth(bar, barWidth)
-            bar.statusBar:SetVertexColor(classColors[1], classColors[2], classColors[3], 0.8)
+            LerpBarValue(bar, entry.value, maxValue)
+            bar.statusBar:SetStatusBarColor(classColors[1], classColors[2], classColors[3], 0.8)
             
             bar.rank:SetText(Meter.defaults.showRank and tostring(i) or "")
             bar.name:SetText(entry.name)
@@ -958,7 +1050,7 @@ function MeterWindowMixin:RefreshHistorical()
         else
             bar:Hide()
             bar.playerData = nil
-            bar.currentWidth = nil  -- Reset animation state
+            bar.currentLerpValue = nil  -- Reset animation state
             bar.lastLerpTime = nil
         end
     end
@@ -1542,10 +1634,19 @@ function MeterWindowMixin:UpdateBars()
     local settings = self.settings
     local barHeight = settings.barHeight
     local spacing = settings.barSpacing
+    local font = settings.font
+    local fontSize = settings.fontSize
+    local fontFlags = settings.fontFlags
     
     for i, bar in ipairs(self.bars) do
         bar:SetHeight(barHeight)
         bar:SetPoint("TOPLEFT", 0, -(i - 1) * (barHeight + spacing))
+        
+        -- Update fonts on all text elements
+        if bar.rank then bar.rank:SetFont(font, fontSize - 1, fontFlags) end
+        if bar.name then bar.name:SetFont(font, fontSize, fontFlags) end
+        if bar.value then bar.value:SetFont(font, fontSize, fontFlags) end
+        if bar.percent then bar.percent:SetFont(font, fontSize - 1, fontFlags) end
     end
     
     self:Refresh()

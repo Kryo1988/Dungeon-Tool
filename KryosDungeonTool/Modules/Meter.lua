@@ -64,14 +64,16 @@ KDT.Meter.MODE_NAMES = {
 }
 
 -- Map modes to Blizzard DamageMeterType (WoW 12.0 Enum)
--- Includes new types: Dps, Hps, Absorbs, Dispels (discovered via Details)
+-- IMPORTANT: DPS/HPS modes use DamageDone/HealingDone - NOT Enum.DamageMeterType.Dps/Hps!
+-- The Dps/Hps types return cumulative DPS samples, not actual damage/healing totals.
+-- The mode only controls whether we display total or per-second values.
 KDT.Meter.MODE_TO_BLIZZARD = {}
 if IS_MIDNIGHT and Enum and Enum.DamageMeterType then
     KDT.Meter.MODE_TO_BLIZZARD = {
         [1] = Enum.DamageMeterType.DamageDone,
         [2] = Enum.DamageMeterType.HealingDone,
-        [3] = Enum.DamageMeterType.Dps or Enum.DamageMeterType.DamageDone,
-        [4] = Enum.DamageMeterType.Hps or Enum.DamageMeterType.HealingDone,
+        [3] = Enum.DamageMeterType.DamageDone,      -- DPS = DamageDone displayed as /s
+        [4] = Enum.DamageMeterType.HealingDone,      -- HPS = HealingDone displayed as /s
         [5] = Enum.DamageMeterType.Interrupts,
         [6] = nil,
         [7] = Enum.DamageMeterType.DamageTaken,
@@ -132,6 +134,35 @@ local function SafeRead(value)
     if value == nil then return nil end
     if issecretvalue and issecretvalue(value) then return nil end
     return value
+end
+
+-- Build group member name set (call once per collection pass)
+local function BuildGroupRoster()
+    local roster = {}
+    roster[UnitName("player")] = true
+    if IsInGroup() then
+        for i = 1, 4 do
+            local token = "party" .. i
+            if UnitExists(token) then
+                local name = UnitName(token)
+                if name then roster[name] = true end
+            end
+        end
+    end
+    return roster
+end
+
+-- Check if a combat source belongs to the player's group
+local function IsSourceInGroup(source, roster)
+    if source.isLocalPlayer then return true end
+    local name = SafeRead(source.name)
+    if not name then return false end
+    -- Direct match
+    if roster[name] then return true end
+    -- Name-Realm match
+    local shortName = name:match("^([^%-]+)")
+    if shortName and roster[shortName] then return true end
+    return false
 end
 
 local function GetSourceName(source)
@@ -230,9 +261,20 @@ function Meter:EndCombat()
             end
         end
         
-        -- Final data collection (values are readable after combat ends)
+        -- Final data collection (values become readable shortly after combat ends)
         if IS_MIDNIGHT and C_DamageMeter then
             self:CollectSessionData()
+            
+            -- If we got no data, retry after a short delay (values may still be secret)
+            if self.currentSegment.totalDamage == 0 and self.currentSegment.totalHealing == 0 then
+                local seg = self.currentSegment
+                C_Timer.After(1, function()
+                    if seg and seg.duration and seg.duration > 0 then
+                        Meter:CollectSessionDataForSegment(seg)
+                        Meter:RefreshAllWindows()
+                    end
+                end)
+            end
         end
         
         if self.currentSegment.totalDamage > 0 or self.currentSegment.totalHealing > 0 then
@@ -243,6 +285,53 @@ function Meter:EndCombat()
     
     self:UpdateRestrictionState()
     self:RefreshAllWindows()
+end
+
+-- Retry collection on a specific (possibly old) segment
+function Meter:CollectSessionDataForSegment(segment)
+    if not segment or not segment.sessionId then return end
+    local sessionId = segment.sessionId
+    
+    -- Reset and recollect
+    segment.totalDamage = 0
+    segment.totalHealing = 0
+    segment.totalInterrupts = 0
+    segment.totalDamageTaken = 0
+    segment.totalAbsorbs = 0
+    segment.totalDispels = 0
+    segment.players = {}
+    
+    local origSeg = self.currentSegment
+    self.currentSegment = segment
+    
+    local roster = BuildGroupRoster()
+    
+    self:CollectTypeData(sessionId, Enum.DamageMeterType.DamageDone, "damage", "dps", "totalDamage", roster)
+    self:CollectTypeData(sessionId, Enum.DamageMeterType.HealingDone, "healing", "hps", "totalHealing", roster)
+    self:CollectTypeData(sessionId, Enum.DamageMeterType.DamageTaken, "damageTaken", nil, "totalDamageTaken", roster)
+    self:CollectTypeData(sessionId, Enum.DamageMeterType.Interrupts, "interrupts", nil, "totalInterrupts", roster)
+    if Enum.DamageMeterType.Absorbs then
+        self:CollectTypeData(sessionId, Enum.DamageMeterType.Absorbs, "absorbs", nil, "totalAbsorbs", roster)
+    end
+    if Enum.DamageMeterType.Dispels then
+        self:CollectTypeData(sessionId, Enum.DamageMeterType.Dispels, "dispels", nil, "totalDispels", roster)
+    end
+    self:CollectSpellBreakdowns(sessionId)
+    
+    self.currentSegment = origSeg
+    
+    -- Update segment in history if it was already saved
+    if segment.totalDamage > 0 or segment.totalHealing > 0 then
+        -- Check if it needs to be added to segments list
+        local found = false
+        for _, seg in ipairs(self.segments) do
+            if seg == segment then found = true; break end
+        end
+        if not found then
+            table.insert(self.segments, 1, segment)
+            while #self.segments > self.maxSegments do table.remove(self.segments) end
+        end
+    end
 end
 
 -- ==================== SESSION DATA COLLECTION (WoW 12.0) ====================
@@ -265,16 +354,18 @@ function Meter:CollectSessionData()
     self.currentSegment.totalAbsorbs = 0
     self.currentSegment.totalDispels = 0
     
-    self:CollectTypeData(sessionId, Enum.DamageMeterType.DamageDone, "damage", "dps", "totalDamage")
-    self:CollectTypeData(sessionId, Enum.DamageMeterType.HealingDone, "healing", "hps", "totalHealing")
-    self:CollectTypeData(sessionId, Enum.DamageMeterType.DamageTaken, "damageTaken", nil, "totalDamageTaken")
-    self:CollectTypeData(sessionId, Enum.DamageMeterType.Interrupts, "interrupts", nil, "totalInterrupts")
+    local roster = BuildGroupRoster()
+    
+    self:CollectTypeData(sessionId, Enum.DamageMeterType.DamageDone, "damage", "dps", "totalDamage", roster)
+    self:CollectTypeData(sessionId, Enum.DamageMeterType.HealingDone, "healing", "hps", "totalHealing", roster)
+    self:CollectTypeData(sessionId, Enum.DamageMeterType.DamageTaken, "damageTaken", nil, "totalDamageTaken", roster)
+    self:CollectTypeData(sessionId, Enum.DamageMeterType.Interrupts, "interrupts", nil, "totalInterrupts", roster)
     
     if Enum.DamageMeterType.Absorbs then
-        self:CollectTypeData(sessionId, Enum.DamageMeterType.Absorbs, "absorbs", nil, "totalAbsorbs")
+        self:CollectTypeData(sessionId, Enum.DamageMeterType.Absorbs, "absorbs", nil, "totalAbsorbs", roster)
     end
     if Enum.DamageMeterType.Dispels then
-        self:CollectTypeData(sessionId, Enum.DamageMeterType.Dispels, "dispels", nil, "totalDispels")
+        self:CollectTypeData(sessionId, Enum.DamageMeterType.Dispels, "dispels", nil, "totalDispels", roster)
     end
     
     -- Collect spell breakdowns
@@ -282,12 +373,12 @@ function Meter:CollectSessionData()
 end
 
 -- Generic type data collection (reduces code duplication)
-function Meter:CollectTypeData(sessionId, dmType, field, psField, totalField)
+function Meter:CollectTypeData(sessionId, dmType, field, psField, totalField, roster)
     local session = C_DamageMeter.GetCombatSessionFromID(sessionId, dmType)
     if not session or not session.combatSources then return end
     
     for _, source in ipairs(session.combatSources) do
-        if source.classFilename then
+        if source.classFilename and IsSourceInGroup(source, roster) then
             local name = GetSourceName(source)
             if name then
                 local p = self:GetOrCreatePlayer(self.currentSegment, name, GetSourceClass(source))
@@ -302,8 +393,17 @@ function Meter:CollectTypeData(sessionId, dmType, field, psField, totalField)
                         end
                     end
                     if psField then
+                        -- Use amountPerSecond from API (correct for DamageDone/HealingDone types)
                         local perSec = SafeRead(source.amountPerSecond)
-                        if perSec then p[psField] = perSec end
+                        if perSec then
+                            p[psField] = perSec
+                        elseif amount then
+                            -- Fallback: calculate manually
+                            local dur = self.currentSegment.duration
+                            if dur and dur > 0 then
+                                p[psField] = amount / dur
+                            end
+                        end
                     end
                 end
             end
@@ -415,11 +515,13 @@ function Meter:CollectFinalData()
         table.insert(typeMap, {st = sessionType, dt = Enum.DamageMeterType.Dispels, f = "dispels", ps = nil, tf = "totalDispels"})
     end
     
+    local roster = BuildGroupRoster()
+    
     for _, info in ipairs(typeMap) do
         local session = C_DamageMeter.GetCombatSessionFromType(info.st, info.dt)
         if session and session.combatSources then
             for _, source in ipairs(session.combatSources) do
-                if source.classFilename then
+                if source.classFilename and IsSourceInGroup(source, roster) then
                     local name = GetSourceName(source)
                     if name then
                         local p = self:GetOrCreatePlayer(self.currentSegment, name, GetSourceClass(source))
@@ -431,7 +533,14 @@ function Meter:CollectFinalData()
                             end
                             if info.ps then
                                 local perSec = SafeRead(source.amountPerSecond)
-                                if perSec then p[info.ps] = perSec end
+                                if perSec then
+                                    p[info.ps] = perSec
+                                elseif amount then
+                                    local dur = self.currentSegment.duration
+                                    if dur and dur > 0 then
+                                        p[info.ps] = amount / dur
+                                    end
+                                end
                             end
                         end
                     end

@@ -205,6 +205,10 @@ function KDT:CreateMeterElements(f)
         value = math.floor(value)
         self.Text:SetText(value)
         Meter.defaults.fontSize = value
+        for _, window in pairs(Meter.windows) do
+            window.settings.fontSize = value
+            window:UpdateBars()
+        end
     end)
     
     -- Max Bars Slider
