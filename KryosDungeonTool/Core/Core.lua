@@ -66,6 +66,16 @@ local defaults = {
     meter = {
         enabled = true,
     },
+    qol = {
+        sellJunk = false,
+        autoRepairEnabled = false,
+        autoRepairMode = "personal",  -- "personal" or "guild"
+        autoRoleAccept = false,
+        autoRolePreference = "dps",   -- "dps", "healer", "tank"
+        autoAcceptInvites = false,
+        autoAcceptQuest = false,
+        autoTurnInQuest = false,
+    },
 }
 
 -- Deep copy function
@@ -256,7 +266,7 @@ function KDT:Print(msg)
 end
 
 -- Version
-KDT.version = "2.6.5"
+KDT.version = "2.6.6"
 
 -- Already alerted (for blacklist)
 KDT.alreadyAlerted = {}

@@ -778,88 +778,115 @@ function MeterWindowMixin:RefreshLive()
     local combatSources = session.combatSources
     local showPerSecond = (self.mode == Meter.MODES.DPS or self.mode == Meter.MODES.HPS)
     local isInGroup = IsInGroup()
+    local inInstance = IsInInstance()
     
-    -- Build group member name→class map (only needed in group)
-    local groupMembers = {}
+    -- Build group roster with class + spec for matching
+    -- classFilename and specIconID are non-secret in WoW 12.0
+    local groupRoster = {}
     if isInGroup then
         for i = 1, 4 do
             local token = "party" .. i
             if UnitExists(token) then
                 local name = UnitName(token)
-                if name then
-                    groupMembers[name] = select(2, UnitClass(token))
+                local class = select(2, UnitClass(token))
+                local specIcon = nil
+                -- Try to get spec icon for disambiguation
+                local specID = GetInspectSpecialization and GetInspectSpecialization(token)
+                if not specID or specID == 0 then
+                    -- For party members, use their current spec if available
+                    -- This won't work for inspect, but we can try matching by class alone
                 end
+                table.insert(groupRoster, {
+                    token = token,
+                    name = name,
+                    class = class,
+                    matched = false
+                })
             end
         end
     end
     
     -- Filter sources:
     -- Solo: only isLocalPlayer
-    -- Group: isLocalPlayer + sources whose name matches a group member
-    -- Key insight (WoW 12.0): isLocalPlayer and classFilename are non-secret.
-    -- source.name is readable for group members, secret for strangers.
+    -- Group (instanced): isLocalPlayer + all sources with valid classFilename
+    --   (no strangers in instances)
+    -- Group (open world): isLocalPlayer + match classFilename against roster
+    -- 
+    -- Key WoW 12.0 facts:
+    --   isLocalPlayer, classFilename, specIconID = non-secret (always readable)
+    --   name, sourceGUID, totalAmount, amountPerSecond = secret during combat
+    --   Secret comparison (==) returns secret boolean → cannot use in if/while
     local playerSources = {}
     for _, source in ipairs(combatSources) do
         local include = false
         
         if source.isLocalPlayer then
-            -- Always include self
             include = true
             source._resolvedName = UnitName("player")
             source._resolvedClass = select(2, UnitClass("player"))
         elseif isInGroup then
-            -- In group: check if source.name is readable and matches a group member
-            local srcName = source.name
-            if srcName and not (issecretvalue and issecretvalue(srcName)) then
-                -- Name is readable → it's a group member or known player
-                if type(srcName) == "string" and groupMembers[srcName] then
+            local srcClass = source.classFilename
+            
+            if inInstance then
+                -- In instanced content: no strangers possible, accept all with classFilename
+                if srcClass and type(srcClass) == "string" and srcClass ~= "" then
                     include = true
-                    source._resolvedName = srcName
-                    source._resolvedClass = groupMembers[srcName]
-                else
-                    -- Name might include realm: "Name-Realm"
-                    local shortName = srcName and srcName:match("^([^%-]+)")
-                    if shortName and groupMembers[shortName] then
-                        include = true
-                        source._resolvedName = srcName
-                        source._resolvedClass = groupMembers[shortName]
+                    -- Try to resolve name from roster by class match
+                    for _, member in ipairs(groupRoster) do
+                        if not member.matched and member.class == srcClass then
+                            source._resolvedName = member.name
+                            source._resolvedClass = member.class
+                            member.matched = true
+                            break
+                        end
+                    end
+                    -- If no roster match (duplicate class already matched), still include
+                    if not source._resolvedClass then
+                        source._resolvedClass = srcClass
                     end
                 end
             else
-                -- Name is secret → stranger, but classFilename is readable
-                -- Use classFilename as a non-secret field (WoW 12.0)
-                -- Try to match via GUID comparison as fallback
-                local srcGUID = source.sourceGUID
-                if srcGUID then
-                    for i = 1, 4 do
-                        local token = "party" .. i
-                        if UnitExists(token) then
-                            local guid = UnitGUID(token)
-                            if guid then
-                                local ok, match = pcall(function() return srcGUID == guid end)
-                                if ok and match then
-                                    include = true
-                                    source._resolvedName = UnitName(token)
-                                    source._resolvedClass = select(2, UnitClass(token))
-                                    break
-                                end
-                            end
+                -- Open world: match classFilename against roster
+                if srcClass and type(srcClass) == "string" and srcClass ~= "" then
+                    for _, member in ipairs(groupRoster) do
+                        if not member.matched and member.class == srcClass then
+                            include = true
+                            source._resolvedName = member.name
+                            source._resolvedClass = member.class
+                            member.matched = true
+                            break
                         end
                     end
                 end
             end
+            
+            -- Post-combat fallback: try reading name directly
+            if include and not source._resolvedName then
+                local srcName = source.name
+                if srcName and not (issecretvalue and issecretvalue(srcName)) then
+                    source._resolvedName = srcName
+                end
+            end
         end
-        -- Solo and not isLocalPlayer → skip (don't include strangers)
+        -- Solo and not isLocalPlayer → skip
         
         if include then
             table.insert(playerSources, source)
         end
     end
     
-    -- Sort by value using secret-safe comparison (WoW 12.0 secret values support > <)
-    table.sort(playerSources, function(a, b)
-        return CompareSourceValues(a, b, showPerSecond)
-    end)
+    -- Sort: only possible when values are readable (not secret)
+    -- Secret comparison (>) returns secret boolean → table.sort cannot use it
+    -- During combat: rely on API source order (Blizzard sorts internally)
+    -- After combat: values are readable, sort normally
+    local firstVal = playerSources[1] and GetRawValue(playerSources[1], showPerSecond)
+    local valuesAreSecret = firstVal ~= nil and issecretvalue and issecretvalue(firstVal)
+    
+    if not valuesAreSecret then
+        table.sort(playerSources, function(a, b)
+            return CompareSourceValues(a, b, showPerSecond)
+        end)
+    end
     
     -- "Always Show Self at Top" option
     if Meter.defaults.showSelfTop then
@@ -901,9 +928,10 @@ function MeterWindowMixin:RefreshLive()
             end
             
             -- Class color (respect classColors toggle)
-            local classFile = source._resolvedClass
+            -- classFilename is non-secret in WoW 12.0, always readable
+            local classFile = source._resolvedClass or source.classFilename
             local classColors = {0.5, 0.5, 0.5}
-            if Meter.defaults.classColors and classFile then
+            if Meter.defaults.classColors and classFile and type(classFile) == "string" then
                 classColors = KDT.CLASS_COLORS[classFile] or classColors
             end
             

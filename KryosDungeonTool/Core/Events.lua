@@ -31,6 +31,7 @@ EventUtil.ContinueOnAddOnLoaded(addonName, function()
     KDT:CreateTimerElements(KDT.MainFrame)
     KDT:CreateBlacklistElements(KDT.MainFrame)
     KDT:SetupBisTab(KDT.MainFrame)
+    KDT:CreateTalentsTab(KDT.MainFrame)
     KDT:CreateMeterElements(KDT.MainFrame)
     KDT:CreateUITweaksTab(KDT.MainFrame)
     KDT:SetupTabSwitching(KDT.MainFrame)
@@ -55,6 +56,9 @@ EventUtil.ContinueOnAddOnLoaded(addonName, function()
         if el.Hide then el:Hide() end
     end
     for _, el in pairs(KDT.MainFrame.bisElements) do
+        if el.Hide then el:Hide() end
+    end
+    for _, el in pairs(KDT.MainFrame.talentsElements) do
         if el.Hide then el:Hide() end
     end
     for _, el in pairs(KDT.MainFrame.meterElements) do

@@ -45,6 +45,7 @@ function KDT:CreateMainFrame()
     f.teleportElements = {}
     f.timerElements = {}
     f.bisElements = {}
+    f.talentsElements = {}
     f.meterElements = {}
     f.uitweaksElements = {}
     f.memberRows = {}
@@ -114,8 +115,9 @@ function KDT:CreateMainFrame()
     f.timerTab = CreateTab("M+ TIMER", 196, 75)
     f.meterTab = CreateTab("DMG METER", 274, 80)
     f.bisTab = CreateTab("BiS GEAR", 357, 70)
-    f.uitweaksTab = CreateTab("TWEAKS", 430, 60)
-    f.blacklistTab = CreateTab("BLACKLIST", 493, 75)
+    f.talentsTab = CreateTab("TALENTS", 430, 65)
+    f.uitweaksTab = CreateTab("QoL", 498, 60)
+    f.blacklistTab = CreateTab("BLACKLIST", 561, 75)
     
     -- Content Area (with clipping to hide overflow)
     f.content = CreateFrame("Frame", nil, f)
@@ -165,7 +167,7 @@ function KDT:CreateMainFrame()
         self.currentTab = tabName
         
         -- Reset all tabs
-        local tabs = {self.groupTab, self.teleportTab, self.timerTab, self.bisTab, self.meterTab, self.uitweaksTab, self.blacklistTab}
+        local tabs = {self.groupTab, self.teleportTab, self.timerTab, self.bisTab, self.talentsTab, self.meterTab, self.uitweaksTab, self.blacklistTab}
         for _, tab in ipairs(tabs) do
             tab:SetBackdropColor(0.08, 0.08, 0.10, 1)
             tab:SetBackdropBorderColor(0.2, 0.2, 0.25, 1)
@@ -179,6 +181,7 @@ function KDT:CreateMainFrame()
         for _, el in pairs(self.teleportElements) do if el and el.Hide then el:Hide() end end
         for _, el in pairs(self.timerElements) do if el and el.Hide then el:Hide() end end
         for _, el in pairs(self.bisElements) do if el and el.Hide then el:Hide() end end
+        for _, el in pairs(self.talentsElements) do if el and el.Hide then el:Hide() end end
         for _, el in pairs(self.meterElements) do if el and el.Hide then el:Hide() end end
         for _, el in pairs(self.uitweaksElements) do if el and el.Hide then el:Hide() end end
         for _, btn in ipairs(self.teleportButtons) do if btn and btn.Hide then btn:Hide() end end
@@ -228,6 +231,10 @@ function KDT:CreateMainFrame()
             ActivateTab(self.bisTab)
             for _, el in pairs(self.bisElements) do if el and el.Show then el:Show() end end
             if self.RefreshBis then self:RefreshBis() end
+        elseif tabName == "talents" then
+            ActivateTab(self.talentsTab)
+            for _, el in pairs(self.talentsElements) do if el and el.Show then el:Show() end end
+            if self.RefreshTalents then self:RefreshTalents() end
         elseif tabName == "meter" then
             ActivateTab(self.meterTab)
             for _, el in pairs(self.meterElements) do if el and el.Show then el:Show() end end
@@ -248,6 +255,7 @@ function KDT:CreateMainFrame()
     f.teleportTab:SetScript("OnClick", function() f:SwitchTab("teleport") end)
     f.timerTab:SetScript("OnClick", function() f:SwitchTab("timer") end)
     f.bisTab:SetScript("OnClick", function() f:SwitchTab("bis") end)
+    f.talentsTab:SetScript("OnClick", function() f:SwitchTab("talents") end)
     f.meterTab:SetScript("OnClick", function() f:SwitchTab("meter") end)
     f.uitweaksTab:SetScript("OnClick", function() f:SwitchTab("uitweaks") end)
     f.blacklistTab:SetScript("OnClick", function() f:SwitchTab("blacklist") end)

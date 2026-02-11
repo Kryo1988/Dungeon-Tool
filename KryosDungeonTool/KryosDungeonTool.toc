@@ -1,8 +1,8 @@
-## Interface: 120000
+## Interface: 120000, 120001
 ## Title: |cFFFF0000Kryos|r Dungeon Tool
-## Notes: M+ Group Check, Timer, Damage Meter, BiS Gear Editor, Blacklist & Teleports
+## Notes: M+ Group Check, Timer, Damage Meter, BiS Gear Editor, Talent Builds, QoL Features, Blacklist & Teleports
 ## Author: Kryos
-## Version: 2.6.5
+## Version: 2.6.6
 ## SavedVariables: KryosDungeonToolDB
 ## IconTexture: Interface\Icons\inv_relics_hourglass
 ## OptionalDeps: PeaversTalentsData
@@ -24,6 +24,7 @@ Modules\Timer.lua
 Modules\Meter.lua
 Modules\MouseCursor.lua
 Modules\Talents.lua
+Modules\QoL.lua
 
 # UI
 UI\MainFrame.lua
@@ -32,6 +33,7 @@ UI\BlacklistTab.lua
 UI\TeleportTab.lua
 UI\TimerTab.lua
 UI\BisTab.lua
+UI\TalentsTab.lua
 UI\MeterTab.lua
 UI\MeterWindow.lua
 UI\UITweaksTab.lua
