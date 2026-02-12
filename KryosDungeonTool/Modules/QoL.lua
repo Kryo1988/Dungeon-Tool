@@ -744,9 +744,10 @@ end
 function KDT:ApplyNameplateCVars()
     local qol = GetQoL()
     if not qol or not C_CVar or not C_CVar.SetCVar then return end
-    C_CVar.SetCVar("ShowClassColorInNameplate", qol.showClassColorsNameplates and "1" or "0")
-    C_CVar.SetCVar("UnitNamePlayerGuild", qol.showGuildNames and "1" or "0")
-    C_CVar.SetCVar("UnitNamePlayerPVPTitle", qol.showPvPTitles and "1" or "0")
+    -- WoW 12.0: Some CVars are protected and can cause taint. Use pcall.
+    pcall(C_CVar.SetCVar, "ShowClassColorInNameplate", qol.showClassColorsNameplates and "1" or "0")
+    pcall(C_CVar.SetCVar, "UnitNamePlayerGuild", qol.showGuildNames and "1" or "0")
+    pcall(C_CVar.SetCVar, "UnitNamePlayerPVPTitle", qol.showPvPTitles and "1" or "0")
 end
 
 ---------------------------------------------------------------------------
@@ -774,7 +775,7 @@ end
 function KDT:ApplyDeathEffectSetting()
     local qol = GetQoL()
     if not qol or not C_CVar then return end
-    C_CVar.SetCVar("ffxDeath", qol.hideDeathEffect and "0" or "1")
+    pcall(C_CVar.SetCVar, "ffxDeath", qol.hideDeathEffect and "0" or "1")
 end
 
 function KDT:ApplyZoneTextSetting()
@@ -1808,10 +1809,10 @@ function KDT:ApplyMovementCVars()
     local qol = GetQoL()
     if not qol then return end
     if qol.autoDismount then
-        SetCVar("autoDismount", 1)
+        pcall(SetCVar, "autoDismount", 1)
     end
     if qol.autoDismountFlying then
-        SetCVar("autoDismountFlying", 1)
+        pcall(SetCVar, "autoDismountFlying", 1)
     end
 end
 

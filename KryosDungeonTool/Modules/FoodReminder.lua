@@ -1,7 +1,7 @@
 -- Kryos Dungeon Tool
--- Modules/FoodReminder.lua - Consumable Reminder (Food, Flask, Rune, Weapon, Potions)
--- Checks active buffs + bag contents before M+ and dungeon content
--- WoW 12.0 compatible
+-- Modules/FoodReminder.lua - Consumable Reminder
+-- WoW 12.0 compatible: NO aura field access (secret values), only spell ID existence checks
+-- Checks player + group members, post-to-chat support
 
 local _, KDT = ...
 
@@ -17,8 +17,15 @@ local PlaySound = PlaySound
 local GetWeaponEnchantInfo = GetWeaponEnchantInfo
 local IsInGroup = IsInGroup
 local IsInInstance = IsInInstance
-local AuraUtil = AuraUtil
+local UnitName = UnitName
+local UnitExists = UnitExists
+local UnitIsConnected = UnitIsConnected
+local UnitIsDeadOrGhost = UnitIsDeadOrGhost
+local GetNumGroupMembers = GetNumGroupMembers
+local IsInRaid = IsInRaid
 local format = string.format
+local tinsert = table.insert
+local tconcat = table.concat
 
 ---------------------------------------------------------------------------
 -- SETTINGS
@@ -28,14 +35,14 @@ local function GetQoL()
 end
 
 ---------------------------------------------------------------------------
--- BUFF DETECTION (TWW / WoW 12.0)
--- Instead of checking bag items, we check active buffs.
--- This catches ALL flask/food/rune variants automatically.
+-- BUFF SPELL IDs (comprehensive, WoW 12.0 / TWW / Midnight)
+-- We ONLY check existence via GetPlayerAuraBySpellID / GetAuraDataBySpellID
+-- NEVER access .name, .duration, etc (secret values crash)
 ---------------------------------------------------------------------------
 
--- Known Flask/Phial buff spell IDs (TWW Season 1-2+)
+-- Flask / Phial buff spell IDs
 local FLASK_SPELL_IDS = {
-    -- TWW Flasks (all 3 quality ranks)
+    -- TWW Flasks (R1-R3)
     432021, 432022, 432023,   -- Flask of Alchemical Chaos
     431972, 431973, 431974,   -- Flask of Tempered Mastery
     431975, 431976, 431977,   -- Flask of Tempered Versatility
@@ -43,114 +50,123 @@ local FLASK_SPELL_IDS = {
     431981, 431982, 431983,   -- Flask of Tempered Aggression (Crit)
     431984, 431985, 431986,   -- Flask of Tempered Swiftness
     431987, 431988, 431989,   -- Flask of Saving Graces
+    -- PvP Flasks
+    432024, 432025, 432026,   -- Vicious Flask of Honor
+    432027, 432028, 432029,   -- Vicious Flask of Classical Spirits
+    432030, 432031, 432032,   -- Vicious Flask of the Wrecking Ball
+    432033, 432034, 432035,   -- Vicious Flask of Manifested Fury
+    -- Midnight Flasks (placeholders for future IDs)
+    -- Dragonflight Phials (still usable in some content)
+    371354, 371355, 371356,   -- Phial of Icy Preservation
+    371386, 371387, 371388,   -- Phial of Charged Isolation
+    371339, 371340, 371341,   -- Phial of Static Empowerment
+    371357, 371358, 371359,   -- Phial of Glacial Fury
+    373257, 373258, 373259,   -- Phial of Tepid Versatility
 }
 
--- Known Augment Rune buff spell IDs
-local RUNE_SPELL_IDS = {
-    453256,   -- Crystallized Augment Rune (TWW)
-    393438,   -- DF Augment Rune (fallback)
-    270058,   -- Lightning-Forged Augment Rune
-}
-
--- Well Fed buff spell ID
+-- Food (Well Fed) buff spell IDs
 local FOOD_SPELL_IDS = {
-    19705,    -- Well Fed (generic)
+    -- Generic Well Fed
+    19705,
+    -- TWW individual food buffs (stat foods)
+    462210, 462211, 462212,   -- TWW Crit food
+    462213, 462214, 462215,   -- TWW Haste food
+    462216, 462217, 462218,   -- TWW Mastery food
+    462219, 462220, 462221,   -- TWW Versatility food
+    462222, 462223, 462224,   -- TWW Primary stat food
+    -- TWW Feasts
+    445113, 445114, 445115,   -- Feast of the Divine Day
+    445116, 445117, 445118,   -- Feast of the Midnight Masquerade
+    1237104,                   -- Blooming Feast
+    1278909,                   -- Hearty Blooming Feast
+    -- TWW Hearty food (persists through death)
+    462310, 462311, 462312,
+    462313, 462314, 462315,
+    462316, 462317, 462318,
+    -- TWW misc food
+    461894, 461895, 461896,   -- Sushi Special variants
+    461897, 461898, 461899,   -- Beledar's Bounty variants
+    461900, 461901, 461902,   -- Cave Pepper variants
+    -- Earthen gem food (Ingest Minerals racial)
+    461960, 461961, 461962, 461963,
+    -- Conjured Mana food (Mage)
+    80167,                     -- Conjured Mana Bun buff
+    -- Fiery Fish Sticks (TWW)
+    461860,                    -- Fiery Fish Sticks Well Fed buff
+    -- DF food (still usable)
+    382134, 382135, 382136, 382137,
 }
 
--- Health Potions to check in bags
+-- Augment Rune buff spell IDs
+local RUNE_SPELL_IDS = {
+    453256,   -- Crystallized Augment Rune buff (TWW)
+    453250,   -- Crystallized Augment Rune (alternate buff ID)
+    393438,   -- DF Augment Rune
+    270058,   -- Lightning-Forged Augment Rune
+    347901,   -- Veiled Augment Rune
+}
+
+-- Health Potions (bag check)
 local HEALTH_POTION_ITEMS = {
-    -- TWW
     211878, 211879, 211880,   -- Algari Healing Potion (R1-R3)
     212242, 212243, 212244,   -- Cavedweller's Delight (R1-R3)
-    -- Healthstones
+    244839,                    -- Invigorating Healing Potion
     5512,                      -- Healthstone
     224464,                    -- Healthstone (alternate)
 }
 
--- Combat Potions to check in bags
+-- Combat Potions (bag check)
 local COMBAT_POTION_ITEMS = {
-    -- TWW Tempered Potions (R1-R3)
-    212247, 212248, 212249,   -- Tempered Potion
-    212259, 212260, 212261,   -- Potion of Unwavering Focus
-    212265, 212266, 212267,   -- Frontline Potion
+    212247, 212248, 212249,   -- Tempered Potion (R1-R3)
+    212259, 212260, 212261,   -- Potion of Unwavering Focus (R1-R3)
+    212265, 212266, 212267,   -- Frontline Potion (R1-R3)
 }
 
 ---------------------------------------------------------------------------
--- BUFF CHECKING FUNCTIONS
+-- SAFE BUFF CHECK (WoW 12.0 - no field access, only existence)
 ---------------------------------------------------------------------------
 
--- Check if player has ANY of the given spell IDs as a buff
-local function HasAnyBuff(spellIDs)
-    if not C_UnitAuras or not C_UnitAuras.GetPlayerAuraBySpellID then return false end
+-- Check if a unit has ANY of the given spell IDs as a buff
+-- Returns true/false ONLY - no name/duration (secret values)
+local function UnitHasAnyBuff(unit, spellIDs)
+    if not C_UnitAuras then return false end
+
+    local checkFn
+    if unit == "player" and C_UnitAuras.GetPlayerAuraBySpellID then
+        checkFn = function(id)
+            return C_UnitAuras.GetPlayerAuraBySpellID(id) ~= nil
+        end
+    elseif C_UnitAuras.GetAuraDataBySpellID then
+        checkFn = function(id)
+            return C_UnitAuras.GetAuraDataBySpellID(unit, id) ~= nil
+        end
+    else
+        return false
+    end
+
     for _, spellID in ipairs(spellIDs) do
-        local aura = C_UnitAuras.GetPlayerAuraBySpellID(spellID)
-        if aura then
-            return true, aura.name, aura.expirationTime
+        local ok, result = pcall(checkFn, spellID)
+        if ok and result then
+            return true
         end
     end
     return false
 end
 
--- Scan all buffs for keyword match (catches unlisted variants)
-local function ScanBuffsForKeyword(...)
-    if not AuraUtil or not AuraUtil.ForEachAura then return false end
-    local keywords = { ... }
-    local found, foundName, foundExpire = false, nil, nil
-
-    AuraUtil.ForEachAura("player", "HELPFUL", nil, function(auraData)
-        if auraData and auraData.name then
-            local lowerName = auraData.name:lower()
-            for _, kw in ipairs(keywords) do
-                if lowerName:find(kw:lower()) then
-                    found = true
-                    foundName = auraData.name
-                    foundExpire = auraData.expirationTime
-                    return true -- stop iteration
-                end
-            end
-        end
-    end)
-
-    return found, foundName, foundExpire
-end
-
--- Check for Well Fed buff
-local function HasFoodBuff()
-    local found, name, expTime = HasAnyBuff(FOOD_SPELL_IDS)
-    if found then return true, name, expTime end
-    -- Scan for "Well Fed" / "Satt" (DE) in buff name
-    return ScanBuffsForKeyword("Well Fed", "Satt")
-end
-
--- Check for Flask buff
-local function HasFlaskBuff()
-    local found, name, expTime = HasAnyBuff(FLASK_SPELL_IDS)
-    if found then return true, name, expTime end
-    -- Scan for flask/phial keywords (EN + DE)
-    return ScanBuffsForKeyword("Flask", "Phial", "Fläschchen", "Phiole")
-end
-
--- Check for Augment Rune buff
-local function HasRuneBuff()
-    local found, name, expTime = HasAnyBuff(RUNE_SPELL_IDS)
-    if found then return true, name, expTime end
-    return ScanBuffsForKeyword("Augment", "Verstärkungs")
-end
-
--- Check for temporary weapon enchant (oils, sharpening stones, etc.)
+-- Check for temporary weapon enchant
 local function HasWeaponEnchant()
-    if not GetWeaponEnchantInfo then return false, false end
-    local hasMainHand, _, _, _, hasOffHand = GetWeaponEnchantInfo()
-    return hasMainHand or false, hasOffHand or false
+    if not GetWeaponEnchantInfo then return false end
+    local ok, hasMainHand = pcall(GetWeaponEnchantInfo)
+    return ok and hasMainHand or false
 end
 
 -- Check bag contents for items
 local function HasAnyItem(itemList)
-    if not C_Item or not C_Item.GetItemCount then return false end
+    if not C_Item or not C_Item.GetItemCount then return false, 0 end
     local totalCount = 0
     for _, itemId in ipairs(itemList) do
-        local count = C_Item.GetItemCount(itemId, false, false)
-        if count and count > 0 then
+        local ok, count = pcall(C_Item.GetItemCount, itemId, false, false)
+        if ok and count and count > 0 then
             totalCount = totalCount + count
         end
     end
@@ -158,21 +174,74 @@ local function HasAnyItem(itemList)
 end
 
 ---------------------------------------------------------------------------
--- TIME FORMATTING
+-- CHECK LOGIC
 ---------------------------------------------------------------------------
-local function FormatTimeRemaining(expirationTime)
-    if not expirationTime or expirationTime == 0 then return "" end
-    local remaining = expirationTime - GetTime()
-    if remaining <= 0 then return "|cFFFF4444expired|r" end
-    local mins = math.floor(remaining / 60)
-    local secs = math.floor(remaining % 60)
-    if mins > 5 then
-        return format("|cFF44FF44%dm|r", mins)
-    elseif mins > 0 then
-        return format("|cFFFFAA00%dm %ds|r", mins, secs)
-    else
-        return format("|cFFFF4444%ds|r", secs)
+
+-- Check one unit for all enabled consumables
+-- Returns table of { category, status, detail }
+local function CheckUnit(unit, qol)
+    local results = {}
+
+    -- Flask
+    if qol.foodReminderFlask ~= false then
+        local has = UnitHasAnyBuff(unit, FLASK_SPELL_IDS)
+        tinsert(results, { cat = "Flask", ok = has })
     end
+
+    -- Food
+    if qol.foodReminderFood ~= false then
+        local has = UnitHasAnyBuff(unit, FOOD_SPELL_IDS)
+        tinsert(results, { cat = "Food", ok = has })
+    end
+
+    -- Rune
+    if qol.foodReminderRune then
+        local has = UnitHasAnyBuff(unit, RUNE_SPELL_IDS)
+        tinsert(results, { cat = "Rune", ok = has })
+    end
+
+    -- Weapon (player only)
+    if qol.foodReminderWeapon and unit == "player" then
+        local has = HasWeaponEnchant()
+        tinsert(results, { cat = "Weapon", ok = has })
+    end
+
+    -- Potions (player only, bag check)
+    if qol.foodReminderHealthPot ~= false and unit == "player" then
+        local has, count = HasAnyItem(HEALTH_POTION_ITEMS)
+        tinsert(results, { cat = "HP Pot", ok = has, count = count, warn = (has and count <= 3) })
+    end
+
+    if qol.foodReminderCombatPot and unit == "player" then
+        local has, count = HasAnyItem(COMBAT_POTION_ITEMS)
+        tinsert(results, { cat = "Combat Pot", ok = has, count = count, warn = (has and count <= 2) })
+    end
+
+    return results
+end
+
+-- Get party/raid unit IDs
+local function GetGroupUnits()
+    local units = {}
+    if IsInRaid() then
+        for i = 1, GetNumGroupMembers() do
+            local unit = "raid" .. i
+            if UnitExists(unit) and UnitIsConnected(unit) and not UnitIsDeadOrGhost(unit) then
+                tinsert(units, unit)
+            end
+        end
+    elseif IsInGroup() then
+        tinsert(units, "player")
+        for i = 1, 4 do
+            local unit = "party" .. i
+            if UnitExists(unit) and UnitIsConnected(unit) and not UnitIsDeadOrGhost(unit) then
+                tinsert(units, unit)
+            end
+        end
+    else
+        tinsert(units, "player")
+    end
+    return units
 end
 
 ---------------------------------------------------------------------------
@@ -180,12 +249,13 @@ end
 ---------------------------------------------------------------------------
 local reminderFrame = nil
 local reminderVisible = false
+local lastCheckResults = {} -- stored for Post to Chat
 
 local function CreateReminderFrame()
     if reminderFrame then return reminderFrame end
 
     local f = CreateFrame("Frame", "KDTFoodReminderFrame", UIParent, "BackdropTemplate")
-    f:SetSize(320, 160)
+    f:SetSize(340, 200)
     f:SetPoint("TOP", UIParent, "TOP", 0, -100)
     f:SetFrameStrata("DIALOG")
     f:SetClampedToScreen(true)
@@ -213,24 +283,22 @@ local function CreateReminderFrame()
     -- Title bar accent
     local titleBar = f:CreateTexture(nil, "ARTWORK")
     titleBar:SetHeight(2)
-    titleBar:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
-    titleBar:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
+    titleBar:SetPoint("TOPLEFT", 0, 0)
+    titleBar:SetPoint("TOPRIGHT", 0, 0)
     titleBar:SetColorTexture(0.23, 0.82, 0.93, 0.8)
 
     -- Title
-    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOP", f, "TOP", 0, -12)
-    title:SetText("|cFF3BD1ECConsumable Check|r")
-    f.title = title
+    f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    f.title:SetPoint("TOP", 0, -12)
+    f.title:SetText("|cFF3BD1ECConsumable Check|r")
 
     -- Status text
-    local status = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    status:SetPoint("TOP", title, "BOTTOM", 0, -10)
-    status:SetWidth(295)
-    status:SetJustifyH("LEFT")
-    status:SetWordWrap(true)
-    status:SetSpacing(3)
-    f.status = status
+    f.status = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    f.status:SetPoint("TOP", f.title, "BOTTOM", 0, -10)
+    f.status:SetWidth(315)
+    f.status:SetJustifyH("LEFT")
+    f.status:SetWordWrap(true)
+    f.status:SetSpacing(3)
 
     -- Close button
     local close = CreateFrame("Button", nil, f)
@@ -244,32 +312,50 @@ local function CreateReminderFrame()
     close:SetScript("OnEnter", function() closeText:SetTextColor(1, 0.4, 0.4) end)
     close:SetScript("OnLeave", function() closeText:SetTextColor(0.8, 0.3, 0.3) end)
 
+    -- Button bar
+    local btnY = 8
+    local btnH = 22
+
+    -- Helper to create dark buttons
+    local function CreateDarkButton(parent, width, text, onClick)
+        local btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
+        btn:SetSize(width, btnH)
+        btn:SetBackdrop({ bgFile = "Interface/BUTTONS/WHITE8X8", edgeFile = "Interface/BUTTONS/WHITE8X8", edgeSize = 1 })
+        btn:SetBackdropColor(0.15, 0.15, 0.18, 0.9)
+        btn:SetBackdropBorderColor(0.23, 0.82, 0.93, 0.4)
+        local t = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        t:SetPoint("CENTER")
+        t:SetText("|cFF3BD1EC" .. text .. "|r")
+        btn:SetScript("OnClick", onClick)
+        btn:SetScript("OnEnter", function()
+            btn:SetBackdropColor(0.2, 0.2, 0.25, 0.9)
+            btn:SetBackdropBorderColor(0.23, 0.82, 0.93, 0.8)
+        end)
+        btn:SetScript("OnLeave", function()
+            btn:SetBackdropColor(0.15, 0.15, 0.18, 0.9)
+            btn:SetBackdropBorderColor(0.23, 0.82, 0.93, 0.4)
+        end)
+        return btn
+    end
+
     -- Recheck button
-    local recheck = CreateFrame("Button", nil, f, "BackdropTemplate")
-    recheck:SetSize(90, 22)
-    recheck:SetPoint("BOTTOM", f, "BOTTOM", 0, 8)
-    recheck:SetBackdrop({ bgFile = "Interface/BUTTONS/WHITE8X8", edgeFile = "Interface/BUTTONS/WHITE8X8", edgeSize = 1 })
-    recheck:SetBackdropColor(0.15, 0.15, 0.18, 0.9)
-    recheck:SetBackdropBorderColor(0.23, 0.82, 0.93, 0.4)
-    local recheckText = recheck:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    recheckText:SetPoint("CENTER")
-    recheckText:SetText("|cFF3BD1ECRecheck|r")
-    recheck:SetScript("OnClick", function() KDT:CheckConsumables() end)
-    recheck:SetScript("OnEnter", function()
-        recheck:SetBackdropColor(0.2, 0.2, 0.25, 0.9)
-        recheck:SetBackdropBorderColor(0.23, 0.82, 0.93, 0.8)
+    f.recheckBtn = CreateDarkButton(f, 80, "Recheck", function()
+        KDT:CheckConsumables()
     end)
-    recheck:SetScript("OnLeave", function()
-        recheck:SetBackdropColor(0.15, 0.15, 0.18, 0.9)
-        recheck:SetBackdropBorderColor(0.23, 0.82, 0.93, 0.4)
+    f.recheckBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 10, btnY)
+
+    -- Post to Party button
+    f.postBtn = CreateDarkButton(f, 110, "Post to Party", function()
+        KDT:PostConsumablesToChat()
     end)
+    f.postBtn:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -10, btnY)
 
     -- ESC to close
     f:SetScript("OnShow", function()
         for i = 1, #UISpecialFrames do
             if UISpecialFrames[i] == "KDTFoodReminderFrame" then return end
         end
-        table.insert(UISpecialFrames, "KDTFoodReminderFrame")
+        tinsert(UISpecialFrames, "KDTFoodReminderFrame")
     end)
 
     -- Restore position
@@ -286,118 +372,115 @@ local function CreateReminderFrame()
 end
 
 ---------------------------------------------------------------------------
--- MAIN CHECK LOGIC
+-- FORMAT & DISPLAY
+---------------------------------------------------------------------------
+local GOOD = "|cFF44FF44+|r "
+local BAD  = "|cFFFF4444X|r "
+local WARN = "|cFFFFAA00!|r "
+
+local function FormatResult(r)
+    if r.ok then
+        if r.warn then
+            return format("%s%s: |cFFFFAA00%d left|r", WARN, r.cat, r.count or 0)
+        elseif r.count then
+            return format("%s%s: %d", GOOD, r.cat, r.count)
+        else
+            return format("%s%s: Active", GOOD, r.cat)
+        end
+    else
+        return format("%s%s: |cFFFF6666Missing!|r", BAD, r.cat)
+    end
+end
+
+local function FormatUnitName(unit)
+    local name = UnitName(unit) or unit
+    local _, classFile = UnitClass(unit)
+    if classFile and RAID_CLASS_COLORS[classFile] then
+        local c = RAID_CLASS_COLORS[classFile]
+        return format("|cFF%02x%02x%02x%s|r", c.r * 255, c.g * 255, c.b * 255, name)
+    end
+    return name
+end
+
+---------------------------------------------------------------------------
+-- MAIN CHECK
 ---------------------------------------------------------------------------
 local function CheckConsumables()
     local qol = GetQoL()
     if not qol or not qol.foodReminderEnabled then return end
 
     local lines = {}
-    local missing = 0
-    local warnings = 0
+    local anyMissing = false
+    local anyWarning = false
+    lastCheckResults = {}
 
-    local GOOD  = "|cFF44FF44+|r "
-    local BAD   = "|cFFFF4444X|r "
-    local WARN  = "|cFFFFAA00!|r "
-
-    -- 1) Flask / Phial
-    if qol.foodReminderFlask ~= false then
-        local hasFlask, flaskName, flaskExpire = HasFlaskBuff()
-        if hasFlask then
-            local timeStr = FormatTimeRemaining(flaskExpire)
-            lines[#lines + 1] = format("%sFlask: %s %s", GOOD, flaskName or "Active", timeStr)
-        else
-            lines[#lines + 1] = BAD .. "Flask: |cFFFF6666Missing!|r"
-            missing = missing + 1
-        end
+    -- Check player first
+    local playerResults = CheckUnit("player", qol)
+    local playerLines = {}
+    local playerMissing = false
+    for _, r in ipairs(playerResults) do
+        tinsert(playerLines, "  " .. FormatResult(r))
+        if not r.ok then playerMissing = true; anyMissing = true end
+        if r.warn then anyWarning = true end
     end
 
-    -- 2) Food (Well Fed)
-    if qol.foodReminderFood ~= false then
-        local hasFood, foodName, foodExpire = HasFoodBuff()
-        if hasFood then
-            local timeStr = FormatTimeRemaining(foodExpire)
-            lines[#lines + 1] = format("%sFood: %s %s", GOOD, foodName or "Well Fed", timeStr)
-        else
-            lines[#lines + 1] = BAD .. "Food: |cFFFF6666Not Well Fed!|r"
-            missing = missing + 1
-        end
-    end
+    tinsert(lines, "|cFF3BD1ECYou:|r")
+    for _, l in ipairs(playerLines) do tinsert(lines, l) end
+    lastCheckResults["player"] = playerResults
 
-    -- 3) Augment Rune
-    if qol.foodReminderRune then
-        local hasRune, runeName, runeExpire = HasRuneBuff()
-        if hasRune then
-            local timeStr = FormatTimeRemaining(runeExpire)
-            lines[#lines + 1] = format("%sRune: %s %s", GOOD, runeName or "Active", timeStr)
-        else
-            lines[#lines + 1] = BAD .. "Augment Rune: |cFFFF6666Missing!|r"
-            missing = missing + 1
-        end
-    end
+    -- Check group members (only buffs, not bags)
+    if qol.foodReminderCheckGroup and IsInGroup() then
+        local units = GetGroupUnits()
+        for _, unit in ipairs(units) do
+            if unit ~= "player" then
+                local name = UnitName(unit)
+                if name then
+                    local memberResults = CheckUnit(unit, qol)
+                    local memberMissing = false
+                    local memberLines = {}
 
-    -- 4) Weapon Enchant (Oils, Stones, etc.)
-    if qol.foodReminderWeapon then
-        local hasMainHand = HasWeaponEnchant()
-        if hasMainHand then
-            lines[#lines + 1] = GOOD .. "Weapon Enchant: Active"
-        else
-            lines[#lines + 1] = BAD .. "Weapon Enchant: |cFFFF6666Missing!|r"
-            missing = missing + 1
-        end
-    end
+                    for _, r in ipairs(memberResults) do
+                        -- Only show missing items for group members
+                        if not r.ok then
+                            tinsert(memberLines, "  " .. FormatResult(r))
+                            memberMissing = true
+                            anyMissing = true
+                        end
+                    end
 
-    -- 5) Health Potions (bag check)
-    if qol.foodReminderHealthPot ~= false then
-        local hasHP, hpCount = HasAnyItem(HEALTH_POTION_ITEMS)
-        if hasHP then
-            if hpCount <= 3 then
-                lines[#lines + 1] = format("%sHealth Potions: |cFFFFAA00%d remaining|r", WARN, hpCount)
-                warnings = warnings + 1
-            else
-                lines[#lines + 1] = format("%sHealth Potions: %d", GOOD, hpCount)
+                    if memberMissing then
+                        tinsert(lines, "")
+                        tinsert(lines, FormatUnitName(unit) .. ":")
+                        for _, l in ipairs(memberLines) do tinsert(lines, l) end
+                    end
+                    lastCheckResults[unit] = memberResults
+                end
             end
-        else
-            lines[#lines + 1] = BAD .. "Health Potions: |cFFFF6666None!|r"
-            missing = missing + 1
         end
     end
 
-    -- 6) Combat Potions (bag check)
-    if qol.foodReminderCombatPot then
-        local hasCP, cpCount = HasAnyItem(COMBAT_POTION_ITEMS)
-        if hasCP then
-            if cpCount <= 2 then
-                lines[#lines + 1] = format("%sCombat Potions: |cFFFFAA00%d remaining|r", WARN, cpCount)
-                warnings = warnings + 1
-            else
-                lines[#lines + 1] = format("%sCombat Potions: %d", GOOD, cpCount)
-            end
-        else
-            lines[#lines + 1] = BAD .. "Combat Potions: |cFFFF6666None!|r"
-            missing = missing + 1
-        end
-    end
-
-    -- Display result
-    if missing > 0 or warnings > 0 then
+    -- Show frame if anything is wrong
+    if anyMissing or anyWarning then
         local f = CreateReminderFrame()
-        f.status:SetText(table.concat(lines, "\n"))
+        f.status:SetText(tconcat(lines, "\n"))
 
-        -- Resize to fit content
+        -- Resize to fit
         local textHeight = f.status:GetStringHeight() or 60
-        f:SetHeight(textHeight + 75)
+        f:SetHeight(textHeight + 80)
+
+        -- Show/hide post button based on group
+        f.postBtn:SetShown(IsInGroup())
+
         f:Show()
         reminderVisible = true
 
-        -- Play sound for missing items
-        if missing > 0 and qol.foodReminderSound then
+        -- Sound
+        if anyMissing and qol.foodReminderSound then
             C_Timer.After(0.5, function()
                 PlaySound(SOUNDKIT.RAID_WARNING, "Master")
             end)
         end
     else
-        -- All good
         if reminderFrame and reminderVisible then
             reminderFrame:Hide()
             reminderVisible = false
@@ -406,11 +489,48 @@ local function CheckConsumables()
 end
 
 ---------------------------------------------------------------------------
--- EVENTS
+-- POST TO CHAT
+---------------------------------------------------------------------------
+local function PostConsumablesToChat()
+    local qol = GetQoL()
+    if not qol then return end
+
+    local chatLines = {}
+    tinsert(chatLines, "[KDT] Consumable Check:")
+
+    for unit, results in pairs(lastCheckResults) do
+        local name = UnitName(unit) or unit
+        local missing = {}
+        for _, r in ipairs(results) do
+            if not r.ok then
+                tinsert(missing, r.cat)
+            elseif r.warn then
+                tinsert(missing, r.cat .. " (low)")
+            end
+        end
+
+        if #missing > 0 then
+            tinsert(chatLines, format("  %s: Missing %s", name, tconcat(missing, ", ")))
+        end
+    end
+
+    if #chatLines <= 1 then
+        tinsert(chatLines, "  All consumables OK!")
+    end
+
+    -- Send to party/raid chat
+    local channel = IsInRaid() and "RAID" or "PARTY"
+    for _, line in ipairs(chatLines) do
+        SendChatMessage(line, channel)
+    end
+end
+
+---------------------------------------------------------------------------
+-- EVENTS - DUNGEON/M+ ONLY
 ---------------------------------------------------------------------------
 local eventFrame = CreateFrame("Frame")
 local lastCheckTime = 0
-local CHECK_COOLDOWN = 5
+local CHECK_COOLDOWN = 8
 
 local function OnEvent(self, event, ...)
     local qol = GetQoL()
@@ -419,32 +539,29 @@ local function OnEvent(self, event, ...)
     local now = GetTime()
     if now - lastCheckTime < CHECK_COOLDOWN then return end
 
-    if event == "GROUP_ROSTER_UPDATE" or event == "GROUP_JOINED" then
-        if IsInGroup() then
-            lastCheckTime = now
-            C_Timer.After(2, CheckConsumables)
-        end
+    if event == "CHALLENGE_MODE_START" then
+        -- Always check at M+ start
+        lastCheckTime = now
+        C_Timer.After(1.5, CheckConsumables)
     elseif event == "PLAYER_ENTERING_WORLD" then
-        if IsInInstance() and IsInGroup() then
+        local isInstance, instanceType = IsInInstance()
+        -- Only trigger in party/raid instances (not arena/pvp/scenarios)
+        if isInstance and (instanceType == "party" or instanceType == "raid") and IsInGroup() then
             lastCheckTime = now
             C_Timer.After(3, CheckConsumables)
         end
     elseif event == "ZONE_CHANGED_NEW_AREA" then
-        if IsInInstance() and IsInGroup() then
+        local isInstance, instanceType = IsInInstance()
+        if isInstance and (instanceType == "party" or instanceType == "raid") and IsInGroup() then
             lastCheckTime = now
             C_Timer.After(2, CheckConsumables)
         end
-    elseif event == "CHALLENGE_MODE_START" then
-        lastCheckTime = now
-        C_Timer.After(1, CheckConsumables)
     end
 end
 
-eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
-eventFrame:RegisterEvent("GROUP_JOINED")
+eventFrame:RegisterEvent("CHALLENGE_MODE_START")
 eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eventFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
-eventFrame:RegisterEvent("CHALLENGE_MODE_START")
 eventFrame:SetScript("OnEvent", OnEvent)
 
 ---------------------------------------------------------------------------
@@ -454,6 +571,11 @@ function KDT:CheckConsumables()
     CheckConsumables()
 end
 
+function KDT:PostConsumablesToChat()
+    PostConsumablesToChat()
+end
+
+-- Backward compat
 function KDT:CheckFoodReminder()
     CheckConsumables()
 end

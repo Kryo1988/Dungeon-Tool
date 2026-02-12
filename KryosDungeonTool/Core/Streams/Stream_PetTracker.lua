@@ -3,7 +3,7 @@ local addonName, addon = ...
 if not addon or not addon.db then addon = _G["KryosDungeonTool"] end
 local L = addon.L
 
-local AceGUI = addon.AceGUI
+local function GetAceGUI() return (LibStub and LibStub("AceGUI-3.0", true)) or addon.AceGUI end
 local db
 local stream
 local blinkStartAt
@@ -74,7 +74,7 @@ local function createAceWindow()
 		return
 	end
 	ensureDB()
-	local frame = AceGUI:Create("Window")
+	local frame = GetAceGUI():Create("Window")
 	aceWindow = frame.frame
 	frame:SetTitle((addon.DataPanel and addon.DataPanel.GetStreamOptionsTitle and addon.DataPanel.GetStreamOptionsTitle(stream and stream.meta and stream.meta.title)) or GAMEMENU_OPTIONS)
 	frame:SetWidth(300)
@@ -89,7 +89,7 @@ local function createAceWindow()
 		db.y = yOfs
 	end)
 
-	local fontSize = AceGUI:Create("Slider")
+	local fontSize = GetAceGUI():Create("Slider")
 	fontSize:SetLabel(FONT_SIZE)
 	fontSize:SetSliderValues(8, 120, 1)
 	fontSize:SetValue(db.fontSize)
@@ -99,7 +99,7 @@ local function createAceWindow()
 	end)
 	frame:AddChild(fontSize)
 
-	local textColor = AceGUI:Create("ColorPicker")
+	local textColor = GetAceGUI():Create("ColorPicker")
 	textColor:SetLabel(L["Text color"] or "Text color")
 	textColor:SetColor(db.textColor.r, db.textColor.g, db.textColor.b)
 	textColor:SetCallback("OnValueChanged", function(_, _, r, g, b)
@@ -108,12 +108,12 @@ local function createAceWindow()
 	end)
 	frame:AddChild(textColor)
 
-	local blinkToggle = AceGUI:Create("CheckBox")
+	local blinkToggle = GetAceGUI():Create("CheckBox")
 	blinkToggle:SetLabel(L["Blink"] or "Blink")
 	blinkToggle:SetValue(db.blinkEnabled and true or false)
 	frame:AddChild(blinkToggle)
 
-	local blinkRate = AceGUI:Create("Slider")
+	local blinkRate = GetAceGUI():Create("Slider")
 	blinkRate:SetLabel(L["Blink rate (s)"] or "Blink rate (s)")
 	blinkRate:SetSliderValues(0.2, 2.0, 0.05)
 	blinkRate:SetValue(db.blinkRate)

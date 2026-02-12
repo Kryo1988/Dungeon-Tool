@@ -3,7 +3,7 @@ local addonName, addon = ...
 if not addon or not addon.db then addon = _G["KryosDungeonTool"] end
 local L = addon.L
 
-local AceGUI = addon.AceGUI
+local function GetAceGUI() return (LibStub and LibStub("AceGUI-3.0", true)) or addon.AceGUI end
 local db
 local stream
 
@@ -104,6 +104,8 @@ local function createAceWindow()
 		return
 	end
 	ensureDB()
+	local AceGUI = GetAceGUI()
+	if not AceGUI then print("|cFF3BD1ECKDT:|r AceGUI-3.0 not available for stream config") return end
 	local frame = AceGUI:Create("Window")
 	aceWindow = frame.frame
 	frame:SetTitle((addon.DataPanel and addon.DataPanel.GetStreamOptionsTitle and addon.DataPanel.GetStreamOptionsTitle(stream and stream.meta and stream.meta.title)) or GAMEMENU_OPTIONS)

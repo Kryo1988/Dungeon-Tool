@@ -1,5 +1,4 @@
 local addonName, addon = ...
-if not addon or not addon.db then addon = _G["KryosDungeonTool"] end
 addon.DataPanel = addon.DataPanel or {}
 local DataPanel = addon.DataPanel
 local DataHub = addon.DataHub
@@ -795,6 +794,26 @@ local function registerEditModePanel(panel)
 			click = function() DataPanel:PromptDelete(panel) end,
 		},
 	}
+
+	-- Pre-sync: editModeLayouts may have stale data from initial creation.
+	-- dataPanels (panel.info) is the source of truth for ALL settings.
+	-- Copy every field before RegisterFrame calls ApplyLayout → ApplyEditMode.
+	local emLayouts = addon.db and addon.db.editModeLayouts
+	if emLayouts and panel.info then
+		for layoutKey, layout in pairs(emLayouts) do
+			local record = type(layout) == "table" and layout[id]
+			if record then
+				for k, v in pairs(panel.info) do
+					if type(v) == "table" then
+						record[k] = CopyTable(v)
+					else
+						record[k] = v
+					end
+				end
+				record.relativePoint = panel.info.point or record.relativePoint
+			end
+		end
+	end
 
 	EditMode:RegisterFrame(id, {
 		frame = panel.frame,
@@ -2097,7 +2116,28 @@ initFrame:SetScript("OnEvent", function(self, event)
 	local panelsDB = addon.db.dataPanels or {}
 	addon.db.dataPanels = panelsDB
 
+	-- Pre-migrate numeric keys to string keys BEFORE creating any panels.
+	-- WoW SavedVariables serialize string keys "1","2" as numeric [1],[2].
+	local numericKeys = {}
+	for k in pairs(panelsDB) do
+		if type(k) == "number" then
+			numericKeys[#numericKeys + 1] = k
+		end
+	end
+	for _, k in ipairs(numericKeys) do
+		local sk = tostring(k)
+		if not panelsDB[sk] then
+			panelsDB[sk] = panelsDB[k]
+		end
+		panelsDB[k] = nil
+	end
+
+	-- Collect IDs then create panels
+	local ids = {}
 	for id in pairs(panelsDB) do
+		ids[#ids + 1] = id
+	end
+	for _, id in ipairs(ids) do
 		DataPanel.Create(id, nil, true)
 	end
 

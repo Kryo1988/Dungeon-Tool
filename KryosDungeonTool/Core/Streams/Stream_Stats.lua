@@ -3,7 +3,7 @@ local addonName, addon = ...
 if not addon or not addon.db then addon = _G["KryosDungeonTool"] end
 local L = addon.L
 
-local AceGUI = addon.AceGUI
+local function GetAceGUI() return (LibStub and LibStub("AceGUI-3.0", true)) or addon.AceGUI end
 local db
 local stream
 
@@ -249,12 +249,12 @@ end
 
 local aceWindow
 local function addStatOptions(frame, key, label, supportsMode)
-	local group = AceGUI:Create("InlineGroup")
+	local group = GetAceGUI():Create("InlineGroup")
 	group:SetTitle(label)
 	group:SetFullWidth(true)
 	group:SetLayout("List")
 
-	local show = AceGUI:Create("CheckBox")
+	local show = GetAceGUI():Create("CheckBox")
 	show:SetLabel(SHOW)
 	show:SetValue(db[key].enabled)
 	show:SetCallback("OnValueChanged", function(_, _, val)
@@ -264,7 +264,7 @@ local function addStatOptions(frame, key, label, supportsMode)
 	group:AddChild(show)
 
 	if supportsMode ~= false then
-		local mode = AceGUI:Create("Dropdown")
+		local mode = GetAceGUI():Create("Dropdown")
 		mode:SetLabel(L["StatDisplayMode"] or "Display mode")
 		mode:SetList(DISPLAY_MODE_LABELS, DISPLAY_MODE_ORDER)
 		mode:SetValue(db[key].mode or "percent")
@@ -275,7 +275,7 @@ local function addStatOptions(frame, key, label, supportsMode)
 		group:AddChild(mode)
 	end
 
-	local color = AceGUI:Create("ColorPicker")
+	local color = GetAceGUI():Create("ColorPicker")
 	color:SetLabel(COLOR)
 	local c = db[key].color
 	color:SetColor(c.r, c.g, c.b)
@@ -294,7 +294,7 @@ local function createAceWindow()
 		return
 	end
 	ensureDB()
-	local frame = AceGUI:Create("Window")
+	local frame = GetAceGUI():Create("Window")
 	aceWindow = frame.frame
 	frame:SetTitle((addon.DataPanel and addon.DataPanel.GetStreamOptionsTitle and addon.DataPanel.GetStreamOptionsTitle(stream and stream.meta and stream.meta.title)) or GAMEMENU_OPTIONS)
 	frame:SetWidth(330)
@@ -320,7 +320,7 @@ local function createAceWindow()
 	local groupCore = addon.functions.createContainer("InlineGroup", "List")
 	wrapper:AddChild(groupCore)
 
-	local fontSize = AceGUI:Create("Slider")
+	local fontSize = GetAceGUI():Create("Slider")
 	fontSize:SetLabel(FONT_SIZE)
 	fontSize:SetSliderValues(8, 32, 1)
 	fontSize:SetValue(db.fontSize)
@@ -330,7 +330,7 @@ local function createAceWindow()
 	end)
 	groupCore:AddChild(fontSize)
 
-	local vertical = AceGUI:Create("CheckBox")
+	local vertical = GetAceGUI():Create("CheckBox")
 	vertical:SetLabel(L["Display vertically"] or "Display vertically")
 	vertical:SetValue(db.vertical)
 	vertical:SetCallback("OnValueChanged", function(_, _, val)

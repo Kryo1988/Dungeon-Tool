@@ -4,7 +4,7 @@ if not addon or not addon.db then addon = _G["KryosDungeonTool"] end
 
 local L = addon.L
 
-local AceGUI = addon.AceGUI
+local function GetAceGUI() return (LibStub and LibStub("AceGUI-3.0", true)) or addon.AceGUI end
 local db
 local stream
 local function getOptionsHint()
@@ -50,7 +50,7 @@ local function createAceWindow()
 		return
 	end
 	ensureDB()
-	local frame = AceGUI:Create("Window")
+	local frame = GetAceGUI():Create("Window")
 	aceWindow = frame.frame
 	frame:SetTitle((addon.DataPanel and addon.DataPanel.GetStreamOptionsTitle and addon.DataPanel.GetStreamOptionsTitle(stream and stream.meta and stream.meta.title)) or GAMEMENU_OPTIONS)
 	frame:SetWidth(300)
@@ -65,7 +65,7 @@ local function createAceWindow()
 		db.y = yOfs
 	end)
 
-	local fontSize = AceGUI:Create("Slider")
+	local fontSize = GetAceGUI():Create("Slider")
 	fontSize:SetLabel(FONT_SIZE)
 	fontSize:SetSliderValues(8, 32, 1)
 	fontSize:SetValue(db.fontSize)
@@ -75,7 +75,7 @@ local function createAceWindow()
 	end)
 	frame:AddChild(fontSize)
 
-	local showIcon = AceGUI:Create("CheckBox")
+	local showIcon = GetAceGUI():Create("CheckBox")
 	showIcon:SetLabel(L["durabilityShowIcon"] or "Show icon")
 	showIcon:SetValue(db.showIcon)
 	showIcon:SetCallback("OnValueChanged", function(_, _, val)
@@ -84,7 +84,7 @@ local function createAceWindow()
 	end)
 	frame:AddChild(showIcon)
 
-	local showCritical = AceGUI:Create("CheckBox")
+	local showCritical = GetAceGUI():Create("CheckBox")
 	showCritical:SetLabel(L["durabilityShowCritical"] or "Show critical warning")
 	showCritical:SetValue(db.showCritical)
 	showCritical:SetCallback("OnValueChanged", function(_, _, val)
@@ -93,7 +93,7 @@ local function createAceWindow()
 	end)
 	frame:AddChild(showCritical)
 
-	local useColor = AceGUI:Create("CheckBox")
+	local useColor = GetAceGUI():Create("CheckBox")
 	useColor:SetLabel(L["durabilityUseTextColor"] or "Use custom text color")
 	useColor:SetValue(db.useTextColor)
 	useColor:SetCallback("OnValueChanged", function(_, _, val)
@@ -102,7 +102,7 @@ local function createAceWindow()
 	end)
 	frame:AddChild(useColor)
 
-	local textColor = AceGUI:Create("ColorPicker")
+	local textColor = GetAceGUI():Create("ColorPicker")
 	textColor:SetLabel(L["Text color"] or "Text color")
 	textColor:SetColor(db.textColor.r, db.textColor.g, db.textColor.b)
 	textColor:SetCallback("OnValueChanged", function(_, _, r, g, b)
@@ -111,7 +111,7 @@ local function createAceWindow()
 	end)
 	frame:AddChild(textColor)
 
-	local highColor = AceGUI:Create("ColorPicker")
+	local highColor = GetAceGUI():Create("ColorPicker")
 	highColor:SetLabel(L["durabilityHighColor"] or "High durability color")
 	highColor:SetColor(db.highColor.r, db.highColor.g, db.highColor.b)
 	highColor:SetCallback("OnValueChanged", function(_, _, r, g, b)
@@ -120,7 +120,7 @@ local function createAceWindow()
 	end)
 	frame:AddChild(highColor)
 
-	local midColor = AceGUI:Create("ColorPicker")
+	local midColor = GetAceGUI():Create("ColorPicker")
 	midColor:SetLabel(L["durabilityMidColor"] or "Medium durability color")
 	midColor:SetColor(db.midColor.r, db.midColor.g, db.midColor.b)
 	midColor:SetCallback("OnValueChanged", function(_, _, r, g, b)
@@ -129,7 +129,7 @@ local function createAceWindow()
 	end)
 	frame:AddChild(midColor)
 
-	local lowColor = AceGUI:Create("ColorPicker")
+	local lowColor = GetAceGUI():Create("ColorPicker")
 	lowColor:SetLabel(L["durabilityLowColor"] or "Low durability color")
 	lowColor:SetColor(db.lowColor.r, db.lowColor.g, db.lowColor.b)
 	lowColor:SetCallback("OnValueChanged", function(_, _, r, g, b)

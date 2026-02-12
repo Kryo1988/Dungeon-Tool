@@ -4,7 +4,7 @@ if not addon or not addon.db then addon = _G["KryosDungeonTool"] end
 
 local L = addon.L
 
-local AceGUI = addon.AceGUI
+local function GetAceGUI() return (LibStub and LibStub("AceGUI-3.0", true)) or addon.AceGUI end
 local db
 local stream
 -- Forward declarations used across functions
@@ -42,7 +42,7 @@ local function createAceWindow()
 		return
 	end
 	ensureDB()
-	local frame = AceGUI:Create("Window")
+	local frame = GetAceGUI():Create("Window")
 	aceWindow = frame.frame
 	frame:SetTitle((addon.DataPanel and addon.DataPanel.GetStreamOptionsTitle and addon.DataPanel.GetStreamOptionsTitle(stream and stream.meta and stream.meta.title)) or GAMEMENU_OPTIONS)
 	frame:SetWidth(300)
@@ -57,7 +57,7 @@ local function createAceWindow()
 		db.y = yOfs
 	end)
 
-	local fontSize = AceGUI:Create("Slider")
+	local fontSize = GetAceGUI():Create("Slider")
 	fontSize:SetLabel(FONT_SIZE)
 	fontSize:SetSliderValues(8, 32, 1)
 	fontSize:SetValue(db.fontSize)
@@ -68,7 +68,7 @@ local function createAceWindow()
 	frame:AddChild(fontSize)
 
 	local splitDisplayInline
-	local splitDisplay = AceGUI:Create("CheckBox")
+	local splitDisplay = GetAceGUI():Create("CheckBox")
 	splitDisplay:SetLabel(L["Friends/Guild display"] or "Show friends + guild")
 	splitDisplay:SetValue(db.splitDisplay == true)
 	splitDisplay:SetCallback("OnValueChanged", function(_, _, val)
@@ -80,7 +80,7 @@ local function createAceWindow()
 	end)
 	frame:AddChild(splitDisplay)
 
-	splitDisplayInline = AceGUI:Create("CheckBox")
+	splitDisplayInline = GetAceGUI():Create("CheckBox")
 	splitDisplayInline:SetLabel(L["Friends/Guild display single line"] or "Single-line layout")
 	splitDisplayInline:SetValue(db.splitDisplayInline == true)
 	splitDisplayInline:SetDisabled(not db.splitDisplay)
@@ -298,14 +298,14 @@ end
 
 local function ensureListWindow()
 	if listWindow and listWindow.frame and listWindow.frame:IsShown() then return listWindow end
-	local frame = AceGUI:Create("Window")
+	local frame = GetAceGUI():Create("Window")
 	listWindow = frame
 	frame:SetTitle(FRIENDS)
 	frame:SetWidth(720)
 	frame:SetHeight(520)
 	frame:SetLayout("Fill")
 
-	local scroll = AceGUI:Create("ScrollFrame")
+	local scroll = GetAceGUI():Create("ScrollFrame")
 	scroll:SetLayout("Flow")
 	frame:AddChild(scroll)
 
@@ -320,7 +320,7 @@ local function colorizedName(name, color)
 end
 
 local function addHeader(scroll, title)
-	local header = AceGUI:Create("Label")
+	local header = GetAceGUI():Create("Label")
 	header:SetFullWidth(true)
 	header:SetText("|cffffd100" .. title .. "|r")
 	header:SetFont(addon.variables and addon.variables.defaultFont or GameFontNormal:GetFont(), 14, "OUTLINE")
@@ -329,11 +329,11 @@ end
 
 local function addRow(scroll, cols)
 	-- cols: array of { text=..., width=relativeWidth }
-	local row = AceGUI:Create("SimpleGroup")
+	local row = GetAceGUI():Create("SimpleGroup")
 	row:SetFullWidth(true)
 	row:SetLayout("Flow")
 	for i, col in ipairs(cols) do
-		local lbl = AceGUI:Create("Label")
+		local lbl = GetAceGUI():Create("Label")
 		lbl:SetRelativeWidth(col.width or (1 / #cols))
 		lbl:SetText(col.text or "")
 		scroll:AddChild(lbl)
@@ -346,11 +346,11 @@ function populateListWindow()
 	scroll:ReleaseChildren()
 
 	-- Header row
-	local headerRow = AceGUI:Create("SimpleGroup")
+	local headerRow = GetAceGUI():Create("SimpleGroup")
 	headerRow:SetFullWidth(true)
 	headerRow:SetLayout("Flow")
 	local function headerLabel(text, width)
-		local lbl = AceGUI:Create("Label")
+		local lbl = GetAceGUI():Create("Label")
 		lbl:SetText("|cffcccccc" .. text .. "|r")
 		lbl:SetRelativeWidth(width)
 		headerRow:AddChild(lbl)

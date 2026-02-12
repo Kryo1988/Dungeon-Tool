@@ -220,10 +220,17 @@ local defaults = {
         tooltipHidePvP = false,
         tooltipHideRightClick = false,
         tooltipAnchorCursor = false,
+        tooltipCursorOffsetX = 0,
+        tooltipCursorOffsetY = 0,
         tooltipScale = 1,
         -- Phase 2: Bag Item Level
         showBagItemLevel = false,
         showBagUpgradeArrow = false,
+        -- Character Panel Overlay
+        charPanelEnabled = false,
+        charPanelShowIlvl = true,
+        charPanelShowEnchant = true,
+        charPanelShowSockets = true,
         -- Phase 2: Trade & Mail Log
         enableTradeMailLog = false,
         -- Phase 2: Action Bar Tweaks
@@ -257,7 +264,8 @@ local defaults = {
         foodReminderRune = false,       -- Off by default (not everyone uses runes)
         foodReminderWeapon = false,     -- Off by default (not all specs use temp enchants)
         foodReminderHealthPot = true,
-        foodReminderCombatPot = false,  -- Off by default (casual players may not use)
+        foodReminderCombatPot = false,
+        foodReminderCheckGroup = true,  -- Check group members for buffs
         -- Phase 3: Chat History
         chatHistoryEnabled = false,
         chatHistoryMaxMessages = 500,
@@ -289,6 +297,7 @@ local defaults = {
         classColors = true,      -- Class-colored names in chat
         clickableURLs = true,    -- Clickable URL links
         shortenChannels = true,  -- Shorten channel names
+        hideSocialButton = false, -- Hide social button on chat frame
     },
     editModeLayouts = {},  -- EditMode layout position data per layout
     dataPanels = {},  -- DataPanel configurations

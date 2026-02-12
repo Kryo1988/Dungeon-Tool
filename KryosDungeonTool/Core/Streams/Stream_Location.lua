@@ -3,7 +3,7 @@ local addonName, addon = ...
 if not addon or not addon.db then addon = _G["KryosDungeonTool"] end
 local L = addon.L
 
-local AceGUI = addon.AceGUI
+local function GetAceGUI() return (LibStub and LibStub("AceGUI-3.0", true)) or addon.AceGUI end
 local db
 local stream
 
@@ -40,7 +40,7 @@ local function createAceWindow()
 		return
 	end
 	ensureDB()
-	local frame = AceGUI:Create("Window")
+	local frame = GetAceGUI():Create("Window")
 	aceWindow = frame.frame
 	frame:SetTitle((addon.DataPanel and addon.DataPanel.GetStreamOptionsTitle and addon.DataPanel.GetStreamOptionsTitle(stream and stream.meta and stream.meta.title)) or GAMEMENU_OPTIONS)
 	frame:SetWidth(320)
@@ -64,7 +64,7 @@ local function createAceWindow()
 		end)
 	end
 
-	local fontSize = AceGUI:Create("Slider")
+	local fontSize = GetAceGUI():Create("Slider")
 	fontSize:SetLabel(FONT_SIZE)
 	fontSize:SetSliderValues(8, 32, 1)
 	fontSize:SetValue(db.fontSize)
@@ -74,7 +74,7 @@ local function createAceWindow()
 	end)
 	frame:AddChild(fontSize)
 
-	local showSubzone = AceGUI:Create("CheckBox")
+	local showSubzone = GetAceGUI():Create("CheckBox")
 	showSubzone:SetLabel(L["Show subzone"] or "Show subzone")
 	showSubzone:SetValue(db.showSubzone and true or false)
 	showSubzone:SetCallback("OnValueChanged", function(_, _, val)
@@ -83,7 +83,7 @@ local function createAceWindow()
 	end)
 	frame:AddChild(showSubzone)
 
-	local useZoneColor = AceGUI:Create("CheckBox")
+	local useZoneColor = GetAceGUI():Create("CheckBox")
 	useZoneColor:SetLabel(L["Use zone color"] or "Use zone color")
 	useZoneColor:SetValue(db.useZoneColor and true or false)
 	useZoneColor:SetCallback("OnValueChanged", function(_, _, val)

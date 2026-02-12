@@ -3,7 +3,7 @@ local addonName, addon = ...
 if not addon or not addon.db then addon = _G["KryosDungeonTool"] end
 local L = addon.L
 
-local AceGUI = addon.AceGUI
+local function GetAceGUI() return (LibStub and LibStub("AceGUI-3.0", true)) or addon.AceGUI end
 local format = string.format
 
 local sets = {}
@@ -163,7 +163,7 @@ local function createAceWindow()
 		return
 	end
 	ensureDB()
-	local frame = AceGUI:Create("Window")
+	local frame = GetAceGUI():Create("Window")
 	aceWindow = frame.frame
 	frame:SetWidth(320)
 	frame:SetHeight(260)
@@ -178,7 +178,7 @@ local function createAceWindow()
 		db.y = yOfs
 	end)
 
-	local fontSize = AceGUI:Create("Slider")
+	local fontSize = GetAceGUI():Create("Slider")
 	fontSize:SetLabel(FONT_SIZE)
 	fontSize:SetSliderValues(8, 32, 1)
 	fontSize:SetValue(db.fontSize or 14)
@@ -188,7 +188,7 @@ local function createAceWindow()
 	end)
 	frame:AddChild(fontSize)
 
-	local useClassColor = AceGUI:Create("CheckBox")
+	local useClassColor = GetAceGUI():Create("CheckBox")
 	useClassColor:SetLabel(L["DataPanelUseClassTextColor"] or "Use class text color")
 	useClassColor:SetValue(db.useClassColor and true or false)
 	useClassColor:SetCallback("OnValueChanged", function(_, _, val)
@@ -197,7 +197,7 @@ local function createAceWindow()
 	end)
 	frame:AddChild(useClassColor)
 
-	local useTextColor = AceGUI:Create("CheckBox")
+	local useTextColor = GetAceGUI():Create("CheckBox")
 	useTextColor:SetLabel(L["goldPanelUseTextColor"] or "Use custom text color")
 	useTextColor:SetValue(db.useTextColor and true or false)
 	useTextColor:SetCallback("OnValueChanged", function(_, _, val)
@@ -206,7 +206,7 @@ local function createAceWindow()
 	end)
 	frame:AddChild(useTextColor)
 
-	local textColor = AceGUI:Create("ColorPicker")
+	local textColor = GetAceGUI():Create("ColorPicker")
 	textColor:SetLabel(L["Text color"] or "Text color")
 	textColor:SetColor(db.textColor.r, db.textColor.g, db.textColor.b)
 	textColor:SetCallback("OnValueChanged", function(_, _, r, g, b)

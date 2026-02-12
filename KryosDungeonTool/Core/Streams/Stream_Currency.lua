@@ -3,7 +3,7 @@ local addonName, addon = ...
 if not addon or not addon.db then addon = _G["KryosDungeonTool"] end
 local L = addon.L
 
-local AceGUI = addon.AceGUI
+local function GetAceGUI() return (LibStub and LibStub("AceGUI-3.0", true)) or addon.AceGUI end
 local db
 local stream
 local tracked = {}
@@ -173,12 +173,12 @@ local function renderList()
 
 		local row = addon.functions.createContainer("SimpleGroup", "Flow")
 
-		local label = AceGUI:Create("Label")
+		local label = GetAceGUI():Create("Label")
 		label:SetText(("%s (%d)"):format(name, id))
 		label:SetWidth(160)
 		row:AddChild(label)
 
-		local formatDropdown = AceGUI:Create("Dropdown")
+		local formatDropdown = GetAceGUI():Create("Dropdown")
 		formatDropdown:SetList(FORMAT_LABELS, FORMAT_ORDER)
 		formatDropdown:SetValue(getFormatKey(options))
 		formatDropdown:SetWidth(150)
@@ -190,7 +190,7 @@ local function renderList()
 		row:AddChild(formatDropdown)
 
 		if idx > 1 then
-			local up = AceGUI:Create("Icon")
+			local up = GetAceGUI():Create("Icon")
 			up:SetImage("Interface\\Buttons\\UI-ScrollBar-ScrollUpButton-Up") -- TODO replace placeholder
 			up:SetImageSize(16, 16)
 			up:SetWidth(30)
@@ -201,13 +201,13 @@ local function renderList()
 			end)
 			row:AddChild(up)
 		else
-			local spacer = AceGUI:Create("Label")
+			local spacer = GetAceGUI():Create("Label")
 			spacer:SetWidth(30)
 			row:AddChild(spacer)
 		end
 
 		if idx < #db.ids then
-			local down = AceGUI:Create("Icon")
+			local down = GetAceGUI():Create("Icon")
 			down:SetImage("Interface\\Buttons\\UI-ScrollBar-ScrollDownButton-Up") -- TODO replace placeholder
 			down:SetImageSize(16, 16)
 			down:SetWidth(30)
@@ -218,12 +218,12 @@ local function renderList()
 			end)
 			row:AddChild(down)
 		else
-			local spacer = AceGUI:Create("Label")
+			local spacer = GetAceGUI():Create("Label")
 			spacer:SetWidth(30)
 			row:AddChild(spacer)
 		end
 
-		local remove = AceGUI:Create("Icon")
+		local remove = GetAceGUI():Create("Icon")
 		remove:SetImage("Interface\\Buttons\\UI-GroupLoot-Pass-Up") -- TODO replace placeholder
 		remove:SetImageSize(16, 16)
 		remove:SetWidth(30)
@@ -246,7 +246,7 @@ local function createAceWindow()
 		return
 	end
 	ensureDB()
-	local frame = AceGUI:Create("Window")
+	local frame = GetAceGUI():Create("Window")
 	aceWindowWidget = frame
 	frame:SetTitle((addon.DataPanel and addon.DataPanel.GetStreamOptionsTitle and addon.DataPanel.GetStreamOptionsTitle(stream and stream.meta and stream.meta.title)) or GAMEMENU_OPTIONS)
 	frame:SetWidth(280)
@@ -256,12 +256,12 @@ local function createAceWindow()
 	db._windowStatus = db._windowStatus or {}
 	frame:SetStatusTable(db._windowStatus)
 	frame:SetCallback("OnClose", function(widget)
-		AceGUI:Release(widget)
+		GetAceGUI():Release(widget)
 		aceWindowWidget = nil
 		listContainer = nil
 	end)
 
-	local fontSize = AceGUI:Create("Slider")
+	local fontSize = GetAceGUI():Create("Slider")
 	fontSize:SetLabel(FONT_SIZE)
 	fontSize:SetSliderValues(8, 32, 1)
 	fontSize:SetValue(db.fontSize)
@@ -271,7 +271,7 @@ local function createAceWindow()
 	end)
 	frame:AddChild(fontSize)
 
-	local perTip = AceGUI:Create("CheckBox")
+	local perTip = GetAceGUI():Create("CheckBox")
 	perTip:SetLabel(L["Per-currency tooltips"] or "Per-currency tooltips")
 	perTip:SetValue(db.tooltipPerCurrency)
 	perTip:SetCallback("OnValueChanged", function(_, _, val)
@@ -280,7 +280,7 @@ local function createAceWindow()
 	end)
 	frame:AddChild(perTip)
 
-	local showDesc = AceGUI:Create("CheckBox")
+	local showDesc = GetAceGUI():Create("CheckBox")
 	showDesc:SetLabel(L["Show description in tooltip"] or "Show description in tooltip")
 	showDesc:SetValue(db.showDescription)
 	showDesc:SetCallback("OnValueChanged", function(_, _, val)
@@ -290,11 +290,11 @@ local function createAceWindow()
 	frame:AddChild(showDesc)
 
 	local addGroup = addon.functions.createContainer("SimpleGroup", "Flow")
-	local addBox = AceGUI:Create("EditBox")
+	local addBox = GetAceGUI():Create("EditBox")
 	addBox:SetLabel(L["Currency ID"] or "Currency ID")
 	addBox:SetWidth(150)
 	addGroup:AddChild(addBox)
-	local addBtn = AceGUI:Create("Button")
+	local addBtn = GetAceGUI():Create("Button")
 	addBtn:SetText(ADD)
 	addBtn:SetWidth(60)
 	addBtn:SetCallback("OnClick", function()

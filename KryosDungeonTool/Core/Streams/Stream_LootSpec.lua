@@ -3,7 +3,7 @@ local addonName, addon = ...
 if not addon or not addon.db then addon = _G["KryosDungeonTool"] end
 local L = addon.L
 
-local AceGUI = addon.AceGUI
+local function GetAceGUI() return (LibStub and LibStub("AceGUI-3.0", true)) or addon.AceGUI end
 local db
 local stream
 local last = {}
@@ -51,7 +51,7 @@ local function createAceWindow()
 		return
 	end
 	ensureDB()
-	local frame = AceGUI:Create("Window")
+	local frame = GetAceGUI():Create("Window")
 	aceWindow = frame.frame
 	frame:SetTitle((addon.DataPanel and addon.DataPanel.GetStreamOptionsTitle and addon.DataPanel.GetStreamOptionsTitle(stream and stream.meta and stream.meta.title)) or GAMEMENU_OPTIONS)
 	frame:SetWidth(300)
@@ -66,7 +66,7 @@ local function createAceWindow()
 		db.y = yOfs
 	end)
 
-	local prefix = AceGUI:Create("EditBox")
+	local prefix = GetAceGUI():Create("EditBox")
 	prefix:SetLabel(L["Prefix"] or "Prefix")
 	prefix:SetText(db.prefix)
 	prefix:SetCallback("OnEnterPressed", function(_, _, val)
@@ -75,7 +75,7 @@ local function createAceWindow()
 	end)
 	frame:AddChild(prefix)
 
-	local hidePrefix = AceGUI:Create("CheckBox")
+	local hidePrefix = GetAceGUI():Create("CheckBox")
 	hidePrefix:SetLabel(L["Hide prefix"] or "Hide prefix")
 	hidePrefix:SetValue(db.hidePrefix)
 	hidePrefix:SetCallback("OnValueChanged", function(_, _, val)
@@ -84,7 +84,7 @@ local function createAceWindow()
 	end)
 	frame:AddChild(hidePrefix)
 
-	local fontSize = AceGUI:Create("Slider")
+	local fontSize = GetAceGUI():Create("Slider")
 	fontSize:SetLabel(FONT_SIZE)
 	fontSize:SetSliderValues(8, 32, 1)
 	fontSize:SetValue(db.fontSize)
@@ -97,7 +97,7 @@ local function createAceWindow()
 	local hide
 	local truncateName
 
-	hide = AceGUI:Create("CheckBox")
+	hide = GetAceGUI():Create("CheckBox")
 	hide:SetLabel(L["Hide icon"] or "Hide icon")
 	hide:SetValue(db.hideIcon)
 	hide:SetCallback("OnValueChanged", function(_, _, val)
@@ -110,7 +110,7 @@ local function createAceWindow()
 	end)
 	frame:AddChild(hide)
 
-	truncateName = AceGUI:Create("CheckBox")
+	truncateName = GetAceGUI():Create("CheckBox")
 	truncateName:SetLabel(L["Truncate loot spec"] or "Truncate loot spec")
 	truncateName:SetValue(db.truncateSpecName)
 	truncateName:SetCallback("OnValueChanged", function(_, _, val)

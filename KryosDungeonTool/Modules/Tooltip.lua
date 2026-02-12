@@ -490,13 +490,41 @@ function KDT:InitTooltip()
         end
     end)
     
-    -- Anchor override
+    -- Anchor override: follow cursor with adjustable offset
+    local tooltipTracker = CreateFrame("Frame")
+    tooltipTracker:Hide()
+    tooltipTracker:SetScript("OnUpdate", function()
+        if not GameTooltip:IsShown() then
+            tooltipTracker:Hide()
+            return
+        end
+        local qol = GetQoL()
+        if not qol or not qol.tooltipAnchorCursor then
+            tooltipTracker:Hide()
+            return
+        end
+        local ox = (qol.tooltipCursorOffsetX or 0)
+        local oy = (qol.tooltipCursorOffsetY or 0)
+        local scale = GameTooltip:GetEffectiveScale()
+        local cx, cy = GetCursorPosition()
+        GameTooltip:ClearAllPoints()
+        GameTooltip:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", cx / scale + ox, cy / scale + oy)
+    end)
+    
     hooksecurefunc("GameTooltip_SetDefaultAnchor", function(tt, parent)
         local qol = GetQoL()
         if not qol or not qol.tooltipAnchorCursor then return end
-        if tt and tt.SetOwner and parent then
-            tt:SetOwner(parent, "ANCHOR_CURSOR", 0, 0)
-        end
+        if not tt or not parent then return end
+        tt:SetOwner(parent, "ANCHOR_NONE")
+        -- Immediately position at cursor
+        local ox = (qol.tooltipCursorOffsetX or 0)
+        local oy = (qol.tooltipCursorOffsetY or 0)
+        local scale = tt:GetEffectiveScale()
+        local cx, cy = GetCursorPosition()
+        tt:ClearAllPoints()
+        tt:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", cx / scale + ox, cy / scale + oy)
+        -- Start tracking for continuous cursor follow
+        tooltipTracker:Show()
     end)
     
     -- Hide right-click instruction

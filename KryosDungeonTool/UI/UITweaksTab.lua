@@ -1248,6 +1248,15 @@ local function CreateGameplaySections(scrollChild, frame, allSections, sectionY)
         "Checks if you have Tempered Potions or similar combat potions.")
     _, yPos = CreateSeparator(s.content, yPos)
     
+    local groupHeader = s.content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    groupHeader:SetPoint("TOPLEFT", 15, yPos)
+    groupHeader:SetText("|cFF3BD1ECGroup|r")
+    yPos = yPos - 20
+    
+    _, yPos = CreateQoLCheckbox(s.content, "Check Group Members", "foodReminderCheckGroup", yPos,
+        "Also checks party/raid members for Flask, Food, and Rune buffs. A 'Post to Party' button appears to report missing buffs.")
+    _, yPos = CreateSeparator(s.content, yPos)
+    
     -- Manual recheck button
     local recheckBtn = CreateFrame("Button", nil, s.content, "BackdropTemplate")
     recheckBtn:SetSize(140, 24)
@@ -1609,6 +1618,12 @@ local function CreateChatSections(scrollChild, frame, allSections, sectionY)
         "Makes URLs in chat clickable with a copy dialog.")
     _, yPos = CreateCECheckbox(s.content, "Shorten Channel Names", "shortenChannels", yPos,
         "Shortens channel names: [General] to [G], [Trade] to [T],\n[Handel] to [H], [SucheNachGruppe] to [SNG], etc.")
+    _, yPos = CreateSeparator(s.content, yPos)
+    _, yPos = CreateCECheckbox(s.content, "Hide Social Button", "hideSocialButton", yPos,
+        "Hides the Social / Quick Join button on the chat frame.",
+        function(value)
+            if KDT.ChatEnhancer then KDT.ChatEnhancer:ApplySettings() end
+        end)
     
     s.content:SetHeight(math.abs(yPos) + 20)
     s.content:Hide()
@@ -2066,8 +2081,86 @@ local function CreateInterfaceSections(scrollChild, frame, allSections, sectionY
     _, yPos = CreateQoLCheckbox(s.content, "Hide 'Right-Click to...' Text", "tooltipHideRightClick", yPos,
         "Removes the right-click instruction text from tooltips.")
     _, yPos = CreateSeparator(s.content, yPos)
+    -- Cursor Offset X slider (created first, visibility toggled by checkbox callback)
+    local cursorOffXContainer = CreateFrame("Frame", nil, s.content)
+    cursorOffXContainer:SetSize(350, 40)
+    
+    local cursorOffXLabel = cursorOffXContainer:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    cursorOffXLabel:SetPoint("TOPLEFT", 0, 0)
+    cursorOffXLabel:SetText("X Offset:")
+    cursorOffXLabel:SetTextColor(0.8, 0.8, 0.8)
+    
+    local cursorOffXValue = cursorOffXContainer:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    cursorOffXValue:SetPoint("LEFT", cursorOffXLabel, "RIGHT", 5, 0)
+    cursorOffXValue:SetTextColor(0.23, 0.82, 0.92)
+    
+    local cursorOffXSlider = CreateFrame("Slider", nil, cursorOffXContainer, "OptionsSliderTemplate")
+    cursorOffXSlider:SetPoint("TOPLEFT", 0, -16)
+    cursorOffXSlider:SetWidth(180)
+    cursorOffXSlider:SetMinMaxValues(-100, 100)
+    cursorOffXSlider:SetValueStep(5)
+    cursorOffXSlider:SetObeyStepOnDrag(true)
+    cursorOffXSlider:SetValue(KDT.DB.qol.tooltipCursorOffsetX or 0)
+    cursorOffXSlider.Low:SetText("-100")
+    cursorOffXSlider.High:SetText("100")
+    cursorOffXValue:SetText(tostring(math.floor(cursorOffXSlider:GetValue())))
+    cursorOffXSlider:SetScript("OnValueChanged", function(self, val)
+        val = math.floor(val / 5 + 0.5) * 5
+        KDT.DB.qol.tooltipCursorOffsetX = val
+        cursorOffXValue:SetText(tostring(val))
+    end)
+    
+    -- Cursor Offset Y slider
+    local cursorOffYContainer = CreateFrame("Frame", nil, s.content)
+    cursorOffYContainer:SetSize(350, 40)
+    
+    local cursorOffYLabel = cursorOffYContainer:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    cursorOffYLabel:SetPoint("TOPLEFT", 0, 0)
+    cursorOffYLabel:SetText("Y Offset:")
+    cursorOffYLabel:SetTextColor(0.8, 0.8, 0.8)
+    
+    local cursorOffYValue = cursorOffYContainer:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    cursorOffYValue:SetPoint("LEFT", cursorOffYLabel, "RIGHT", 5, 0)
+    cursorOffYValue:SetTextColor(0.23, 0.82, 0.92)
+    
+    local cursorOffYSlider = CreateFrame("Slider", nil, cursorOffYContainer, "OptionsSliderTemplate")
+    cursorOffYSlider:SetPoint("TOPLEFT", 0, -16)
+    cursorOffYSlider:SetWidth(180)
+    cursorOffYSlider:SetMinMaxValues(-100, 100)
+    cursorOffYSlider:SetValueStep(5)
+    cursorOffYSlider:SetObeyStepOnDrag(true)
+    cursorOffYSlider:SetValue(KDT.DB.qol.tooltipCursorOffsetY or 0)
+    cursorOffYSlider.Low:SetText("-100")
+    cursorOffYSlider.High:SetText("100")
+    cursorOffYValue:SetText(tostring(math.floor(cursorOffYSlider:GetValue())))
+    cursorOffYSlider:SetScript("OnValueChanged", function(self, val)
+        val = math.floor(val / 5 + 0.5) * 5
+        KDT.DB.qol.tooltipCursorOffsetY = val
+        cursorOffYValue:SetText(tostring(val))
+    end)
+    
+    local function UpdateCursorOffsetVisibility()
+        local enabled = KDT.DB.qol.tooltipAnchorCursor
+        if enabled then
+            cursorOffXContainer:Show()
+            cursorOffYContainer:Show()
+        else
+            cursorOffXContainer:Hide()
+            cursorOffYContainer:Hide()
+        end
+    end
+    
     _, yPos = CreateQoLCheckbox(s.content, "Anchor Tooltip to Cursor", "tooltipAnchorCursor", yPos,
-        "Positions the tooltip at your cursor instead of the default location.")
+        "Positions the tooltip at your cursor instead of the default location.",
+        function(checked) UpdateCursorOffsetVisibility() end)
+    
+    cursorOffXContainer:SetPoint("TOPLEFT", 30, yPos - 5)
+    yPos = yPos - 45
+    cursorOffYContainer:SetPoint("TOPLEFT", 30, yPos - 5)
+    yPos = yPos - 45
+    
+    UpdateCursorOffsetVisibility()
+    
     _, yPos = CreateSeparator(s.content, yPos)
     
     -- Tooltip Scale Slider
@@ -2119,6 +2212,37 @@ local function CreateInterfaceSections(scrollChild, frame, allSections, sectionY
     _, yPos = CreateQoLCheckbox(s.content, "Show Upgrade Arrow", "showBagUpgradeArrow", yPos,
         "Shows a green arrow on bag items that are an upgrade\nfor your currently equipped gear.",
         function() KDT:InitBagItemLevel() end)
+    s.content:SetHeight(math.abs(yPos) + 20)
+    s.content:Hide()
+    
+    -- Character Panel Overlay
+    sectionY = sectionY - 37
+    s = CreateCollapsibleSection(scrollChild, "Character Panel Overlay", sectionY)
+    s.category = "Interface"
+    table.insert(frame.uitweaksElements, s)
+    table.insert(allSections, s)
+    s.sectionName = "CharPanel"
+    
+    yPos = -20
+    _, yPos = CreateQoLCheckbox(s.content, "Enable Character Panel Overlay", "charPanelEnabled", yPos,
+        "Shows item level, enchant status and socket info on the character frame.",
+        function() KDT:RefreshCharPanel() end)
+    _, yPos = CreateSeparator(s.content, yPos)
+    
+    local cpHeader = s.content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    cpHeader:SetPoint("TOPLEFT", 15, yPos)
+    cpHeader:SetText("|cFF3BD1ECDisplay Options|r")
+    yPos = yPos - 20
+    
+    _, yPos = CreateQoLCheckbox(s.content, "Show Item Level", "charPanelShowIlvl", yPos,
+        "Displays the item level next to each equipment slot.",
+        function() KDT:RefreshCharPanel() end)
+    _, yPos = CreateQoLCheckbox(s.content, "Show Enchant Status", "charPanelShowEnchant", yPos,
+        "Shows enchant names on enchantable slots. Missing enchants are highlighted red.",
+        function() KDT:RefreshCharPanel() end)
+    _, yPos = CreateQoLCheckbox(s.content, "Show Socket Indicators", "charPanelShowSockets", yPos,
+        "Shows colored dots for gem sockets (green = filled, red = empty).",
+        function() KDT:RefreshCharPanel() end)
     s.content:SetHeight(math.abs(yPos) + 20)
     s.content:Hide()
     

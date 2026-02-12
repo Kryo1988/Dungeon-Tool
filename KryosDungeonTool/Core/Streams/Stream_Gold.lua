@@ -3,7 +3,7 @@ local addonName, addon = ...
 if not addon or not addon.db then addon = _G["KryosDungeonTool"] end
 local L = addon.L
 
-local AceGUI = addon.AceGUI
+local function GetAceGUI() return (LibStub and LibStub("AceGUI-3.0", true)) or addon.AceGUI end
 local db
 local stream
 
@@ -53,7 +53,7 @@ local function createAceWindow()
 		return
 	end
 	ensureDB()
-	local frame = AceGUI:Create("Window")
+	local frame = GetAceGUI():Create("Window")
 	aceWindow = frame.frame
 	frame:SetTitle((addon.DataPanel and addon.DataPanel.GetStreamOptionsTitle and addon.DataPanel.GetStreamOptionsTitle(stream and stream.meta and stream.meta.title)) or GAMEMENU_OPTIONS)
 	frame:SetWidth(300)
@@ -68,7 +68,7 @@ local function createAceWindow()
 		db.y = yOfs
 	end)
 
-	local fontSize = AceGUI:Create("Slider")
+	local fontSize = GetAceGUI():Create("Slider")
 	fontSize:SetLabel(FONT_SIZE)
 	fontSize:SetSliderValues(8, 32, 1)
 	fontSize:SetValue(db.fontSize)
@@ -78,7 +78,7 @@ local function createAceWindow()
 	end)
 	frame:AddChild(fontSize)
 
-	local showSilverCopper = AceGUI:Create("CheckBox")
+	local showSilverCopper = GetAceGUI():Create("CheckBox")
 	showSilverCopper:SetLabel(L["goldPanelShowSilverCopper"] or "Show silver and copper")
 	showSilverCopper:SetValue(db.showSilverCopper)
 	showSilverCopper:SetCallback("OnValueChanged", function(_, _, val)
@@ -87,7 +87,7 @@ local function createAceWindow()
 	end)
 	frame:AddChild(showSilverCopper)
 
-	local useColor = AceGUI:Create("CheckBox")
+	local useColor = GetAceGUI():Create("CheckBox")
 	useColor:SetLabel(L["goldPanelUseTextColor"] or "Use custom text color")
 	useColor:SetValue(db.useTextColor)
 	useColor:SetCallback("OnValueChanged", function(_, _, val)
@@ -96,7 +96,7 @@ local function createAceWindow()
 	end)
 	frame:AddChild(useColor)
 
-	local textColor = AceGUI:Create("ColorPicker")
+	local textColor = GetAceGUI():Create("ColorPicker")
 	textColor:SetLabel(L["Text color"] or "Text color")
 	textColor:SetColor(db.textColor.r, db.textColor.g, db.textColor.b)
 	textColor:SetCallback("OnValueChanged", function(_, _, r, g, b)

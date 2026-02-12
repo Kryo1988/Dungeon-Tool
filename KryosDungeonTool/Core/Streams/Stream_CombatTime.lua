@@ -3,7 +3,7 @@ local addonName, addon = ...
 if not addon or not addon.db then addon = _G["KryosDungeonTool"] end
 local L = addon.L
 
-local AceGUI = addon.AceGUI
+local function GetAceGUI() return (LibStub and LibStub("AceGUI-3.0", true)) or addon.AceGUI end
 local db
 local stream
 
@@ -47,7 +47,7 @@ local function createAceWindow()
 		return
 	end
 	ensureDB()
-	local frame = AceGUI:Create("Window")
+	local frame = GetAceGUI():Create("Window")
 	aceWindow = frame.frame
 	frame:SetTitle((addon.DataPanel and addon.DataPanel.GetStreamOptionsTitle and addon.DataPanel.GetStreamOptionsTitle(stream and stream.meta and stream.meta.title)) or GAMEMENU_OPTIONS)
 	frame:SetWidth(300)
@@ -71,7 +71,7 @@ local function createAceWindow()
 		end)
 	end
 
-	local fontSize = AceGUI:Create("Slider")
+	local fontSize = GetAceGUI():Create("Slider")
 	fontSize:SetLabel(FONT_SIZE)
 	fontSize:SetSliderValues(8, 32, 1)
 	fontSize:SetValue(db.fontSize)
@@ -81,7 +81,7 @@ local function createAceWindow()
 	end)
 	frame:AddChild(fontSize)
 
-	local showBoss = AceGUI:Create("CheckBox")
+	local showBoss = GetAceGUI():Create("CheckBox")
 	showBoss:SetLabel(L["combatTimeShowBoss"] or "Show boss timer")
 	showBoss:SetValue(db.showBoss and true or false)
 	showBoss:SetCallback("OnValueChanged", function(_, _, val)
@@ -90,7 +90,7 @@ local function createAceWindow()
 	end)
 	frame:AddChild(showBoss)
 
-	local showLabels = AceGUI:Create("CheckBox")
+	local showLabels = GetAceGUI():Create("CheckBox")
 	showLabels:SetLabel(L["combatTimeShowLabels"] or "Show labels")
 	showLabels:SetValue(db.showLabels and true or false)
 	showLabels:SetCallback("OnValueChanged", function(_, _, val)
@@ -99,7 +99,7 @@ local function createAceWindow()
 	end)
 	frame:AddChild(showLabels)
 
-	local stacked = AceGUI:Create("CheckBox")
+	local stacked = GetAceGUI():Create("CheckBox")
 	stacked:SetLabel(L["combatTimeStacked"] or "Stack timers")
 	stacked:SetValue(db.stack and true or false)
 	stacked:SetCallback("OnValueChanged", function(_, _, val)

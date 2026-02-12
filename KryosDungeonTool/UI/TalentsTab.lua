@@ -534,19 +534,26 @@ function KDT:CreateTalentsTab(frame)
                     edgeFile = "Interface\\Buttons\\WHITE8X8",
                     edgeSize = 1
                 })
-                
+                buildRows[i] = row
+            end
+            
+            -- Ensure row has all required elements (may be reused from message-only row)
+            if not row.nameText then
                 row.nameText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                 row.nameText:SetPoint("TOPLEFT", 10, -8)
                 row.nameText:SetPoint("TOPRIGHT", -120, -8)
                 row.nameText:SetJustifyH("LEFT")
-                
+            end
+            
+            if not row.sourceText then
                 row.sourceText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
                 row.sourceText:SetPoint("TOPLEFT", 10, -26)
-                
-                -- Copy String button
+            end
+            
+            if not row.copyBtn then
                 row.copyBtn = CreateFrame("Button", nil, row, "BackdropTemplate")
-                row.copyBtn:SetSize(90, 20)
-                row.copyBtn:SetPoint("TOPRIGHT", -5, -15)
+                row.copyBtn:SetSize(100, 24)
+                row.copyBtn:SetPoint("RIGHT", -10, 0)
                 row.copyBtn:SetBackdrop({
                     bgFile = "Interface\\Buttons\\WHITE8X8",
                     edgeFile = "Interface\\Buttons\\WHITE8X8",
@@ -567,8 +574,6 @@ function KDT:CreateTalentsTab(frame)
                     self:SetBackdropColor(0.15, 0.15, 0.18, 1)
                     self:SetBackdropBorderColor(0.3, 0.3, 0.35, 1)
                 end)
-                
-                buildRows[i] = row
             end
             
             -- Hide message text if row was previously used as message

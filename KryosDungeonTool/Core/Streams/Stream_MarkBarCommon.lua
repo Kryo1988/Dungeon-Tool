@@ -5,7 +5,7 @@ local L = addon.L
 
 if addon.MarkBarOptions then return end
 
-local AceGUI = addon.AceGUI
+local function GetAceGUI() return (LibStub and LibStub("AceGUI-3.0", true)) or addon.AceGUI end
 local MARKBAR_RING_SIZE_OFFSET = 8
 local MARKBAR_ICON_SIZE_OFFSET = -4
 
@@ -48,14 +48,14 @@ local function showOptions()
 	end
 
 	local db = ensureDB()
-	local frame = AceGUI:Create("Window")
+	local frame = GetAceGUI():Create("Window")
 	aceWindow = frame.frame
 	frame:SetTitle(L["Mark Bar"] or "Mark Bar")
 	frame:SetWidth(280)
 	frame:SetHeight(160)
 	frame:SetLayout("List")
 
-	local iconSize = AceGUI:Create("Slider")
+	local iconSize = GetAceGUI():Create("Slider")
 	iconSize:SetLabel(L["MarkBarIconSize"] or "Icon size")
 	iconSize:SetSliderValues(10, 18, 1)
 	iconSize:SetValue(db.iconSize or 14)

@@ -1,6 +1,5 @@
 -- Kryos Dungeon Tool
 -- Core/Events.lua - Event handling (WoW 12.0 Midnight compatible)
--- NO RegisterEvent calls - uses only polling with C_Timer
 
 local addonName, KDT = ...
 
@@ -10,14 +9,20 @@ local lastInGroup = false
 local lastInInstance = false
 local initialized = false
 
--- ==================== INITIALIZATION ====================
-EventUtil.ContinueOnAddOnLoaded(addonName, function()
-    if initialized then return end
-    initialized = true
-    
-    -- Initialize database
+-- ==================== DB INIT (synchronous ADDON_LOADED) ====================
+-- Must use direct event handler, NOT EventUtil.ContinueOnAddOnLoaded.
+-- EventUtil uses coroutines that can fire AFTER PLAYER_LOGIN in WoW 12.0,
+-- causing DataPanel to read an empty addon.db and lose saved panel configs.
+-- EnhanceQoL uses the same synchronous pattern.
+local dbInitFrame = CreateFrame("Frame")
+dbInitFrame:RegisterEvent("ADDON_LOADED")
+dbInitFrame:SetScript("OnEvent", function(self, event, loadedAddon)
+    if loadedAddon ~= addonName then return end
+    self:UnregisterEvent("ADDON_LOADED")
+
+    -- Initialize database synchronously so addon.db is set before PLAYER_LOGIN
     KDT:InitDB()
-    
+
     -- Initialize ported module defaults (CooldownPanels, Visibility)
     if KDT.Aura and KDT.Aura.functions and KDT.Aura.functions.InitDB then
         KDT.Aura.functions.InitDB()
@@ -25,6 +30,15 @@ EventUtil.ContinueOnAddOnLoaded(addonName, function()
     if KDT.Visibility and KDT.Visibility.functions and KDT.Visibility.functions.InitDB then
         KDT.Visibility.functions.InitDB()
     end
+end)
+
+-- ==================== UI INIT (PLAYER_LOGIN) ====================
+local initFrame = CreateFrame("Frame")
+initFrame:RegisterEvent("PLAYER_LOGIN")
+initFrame:SetScript("OnEvent", function(self, event)
+    self:UnregisterEvent("PLAYER_LOGIN")
+    if initialized then return end
+    initialized = true
     
     KDT:Print("v" .. KDT.version .. " loaded. Type /kdt for options.")
     

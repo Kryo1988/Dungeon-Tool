@@ -3,7 +3,7 @@ local addonName, addon = ...
 if not addon or not addon.db then addon = _G["KryosDungeonTool"] end
 local L = addon.L
 
-local AceGUI = addon.AceGUI
+local function GetAceGUI() return (LibStub and LibStub("AceGUI-3.0", true)) or addon.AceGUI end
 local db
 local stream
 
@@ -47,7 +47,7 @@ local function createAceWindow()
 		return
 	end
 	ensureDB()
-	local frame = AceGUI:Create("Window")
+	local frame = GetAceGUI():Create("Window")
 	aceWindow = frame.frame
 	frame:SetTitle((addon.DataPanel and addon.DataPanel.GetStreamOptionsTitle and addon.DataPanel.GetStreamOptionsTitle(stream and stream.meta and stream.meta.title)) or GAMEMENU_OPTIONS)
 	frame:SetWidth(320)
@@ -71,7 +71,7 @@ local function createAceWindow()
 		end)
 	end
 
-	local fontSize = AceGUI:Create("Slider")
+	local fontSize = GetAceGUI():Create("Slider")
 	fontSize:SetLabel(FONT_SIZE)
 	fontSize:SetSliderValues(8, 32, 1)
 	fontSize:SetValue(db.fontSize)
@@ -81,7 +81,7 @@ local function createAceWindow()
 	end)
 	frame:AddChild(fontSize)
 
-	local display = AceGUI:Create("Dropdown")
+	local display = GetAceGUI():Create("Dropdown")
 	display:SetLabel(L["bagSpaceDisplay"] or "Bag space display")
 	display:SetList({
 		freeMax = L["bagSpaceDisplayFreeMax"] or "Free/Max",
@@ -94,7 +94,7 @@ local function createAceWindow()
 	end)
 	frame:AddChild(display)
 
-	local hideIcon = AceGUI:Create("CheckBox")
+	local hideIcon = GetAceGUI():Create("CheckBox")
 	hideIcon:SetLabel(L["Hide icon"] or "Hide icon")
 	hideIcon:SetValue(db.hideIcon)
 	hideIcon:SetCallback("OnValueChanged", function(_, _, val)
@@ -103,7 +103,7 @@ local function createAceWindow()
 	end)
 	frame:AddChild(hideIcon)
 
-	local textColor = AceGUI:Create("ColorPicker")
+	local textColor = GetAceGUI():Create("ColorPicker")
 	textColor:SetLabel(L["Text color"] or "Text color")
 	textColor:SetColor(db.textColor.r, db.textColor.g, db.textColor.b)
 	textColor:SetCallback("OnValueChanged", function(_, _, r, g, b)

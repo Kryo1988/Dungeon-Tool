@@ -92,7 +92,7 @@ local frameDefinitions = {
     { id = "HouseFinderFrame", label = "House Finder", group = "housing", names = { "HouseFinderFrame" }, addon = "Blizzard_HousingHouseFinder", defaultEnabled = true },
     { id = "HouseListFrame", label = "House List", group = "housing", names = { "HouseListFrame" }, addon = "Blizzard_HouseList", defaultEnabled = true },
     -- World
-    { id = "WorldMapFrame", label = "World Map", group = "world", names = { "WorldMapFrame" }, defaultEnabled = true },
+    { id = "WorldMapFrame", label = "World Map", group = "world", names = { "WorldMapFrame" }, defaultEnabled = false }, -- disabled by default: causes Blizzard taint (SetPassThroughButtons)
     { id = "FlightMapFrame", label = "Flight Map", group = "world", names = { "FlightMapFrame" }, addon = "Blizzard_FlightMap", defaultEnabled = true },
     { id = "QuestFrame", label = "Quest / Gossip", group = "world", names = { "QuestFrame", "GossipFrame" }, defaultEnabled = true },
     -- Bags

@@ -615,6 +615,12 @@ local function ApplySkin()
     local channelBtn = ChatFrameChannelButton
     if channelBtn then channelBtn:SetAlpha(0); channelBtn:EnableMouse(false) end
 
+    -- Social / Quick Join button
+    if GetCfg("hideSocialButton") then
+        local socialBtn = QuickJoinToastButton
+        if socialBtn then socialBtn:SetAlpha(0); socialBtn:EnableMouse(false); socialBtn._kdtHidden = true end
+    end
+
     ForEachChatFrame(function(frame, editBox, idx)
         SkinChatFrame(frame, idx)
         SkinTab(_G["ChatFrame" .. idx .. "Tab"], idx)
@@ -657,6 +663,16 @@ end
 function ChatEnhancer:ApplySettings()
     local alpha = (GetCfg("transparency") or 18) / 100
     local tabAlpha = (GetCfg("tabTransparency") or 0) / 100
+
+    -- Social / Quick Join button toggle
+    local socialBtn = QuickJoinToastButton
+    if socialBtn then
+        if GetCfg("hideSocialButton") then
+            socialBtn:SetAlpha(0); socialBtn:EnableMouse(false); socialBtn._kdtHidden = true
+        elseif socialBtn._kdtHidden then
+            socialBtn:SetAlpha(1); socialBtn:EnableMouse(true); socialBtn._kdtHidden = nil
+        end
+    end
 
     -- Update background alpha
     ForEachChatFrame(function(frame, _, idx)

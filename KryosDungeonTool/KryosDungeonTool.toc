@@ -1,7 +1,7 @@
-## Interface: 120000, 120001
+## Interface: 120000
 ## Title: |cFFFF0000Kryos|r Dungeon Tool
 ## Notes: M+ Group Check, Timer, Damage Meter, BiS Gear Editor, Talent Builds, QoL & Economy & Interface Tweaks, Blacklist & Teleports
-## Author: Kryo
+## Author: Kryos
 ## Version: 2.7.7
 ## SavedVariables: KryosDungeonToolDB
 ## IconTexture: Interface\Icons\inv_relics_hourglass
@@ -91,6 +91,7 @@ Modules\MouseCursor.lua
 Modules\Talents.lua
 Modules\Tooltip.lua
 Modules\BagItemLevel.lua
+Modules\CharPanel.lua
 Modules\ChatIcons.lua
 Modules\HealthText.lua
 Modules\InstanceDifficulty.lua
