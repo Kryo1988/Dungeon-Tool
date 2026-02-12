@@ -180,7 +180,7 @@ function KDT:CreateMainFrame()
         for _, el in pairs(self.blacklistElements) do if el and el.Hide then el:Hide() end end
         for _, el in pairs(self.teleportElements) do if el and el.Hide then el:Hide() end end
         for _, el in pairs(self.timerElements) do if el and el.Hide then el:Hide() end end
-        for _, el in pairs(self.bisElements) do if el and el.Hide then el:Hide() end end
+        for _, el in pairs(self.bisElements) do if el and type(el) == "table" and el.Hide then el:Hide() end end
         for _, el in pairs(self.talentsElements) do if el and el.Hide then el:Hide() end end
         for _, el in pairs(self.meterElements) do if el and el.Hide then el:Hide() end end
         for _, el in pairs(self.uitweaksElements) do if el and el.Hide then el:Hide() end end
@@ -229,7 +229,7 @@ function KDT:CreateMainFrame()
             if self.RefreshTimer then self:RefreshTimer() end
         elseif tabName == "bis" then
             ActivateTab(self.bisTab)
-            for _, el in pairs(self.bisElements) do if el and el.Show then el:Show() end end
+            for _, el in pairs(self.bisElements) do if el and type(el) == "table" and el.Show then el:Show() end end
             if self.RefreshBis then self:RefreshBis() end
         elseif tabName == "talents" then
             ActivateTab(self.talentsTab)

@@ -17,6 +17,15 @@ EventUtil.ContinueOnAddOnLoaded(addonName, function()
     
     -- Initialize database
     KDT:InitDB()
+    
+    -- Initialize ported module defaults (CooldownPanels, Visibility)
+    if KDT.Aura and KDT.Aura.functions and KDT.Aura.functions.InitDB then
+        KDT.Aura.functions.InitDB()
+    end
+    if KDT.Visibility and KDT.Visibility.functions and KDT.Visibility.functions.InitDB then
+        KDT.Visibility.functions.InitDB()
+    end
+    
     KDT:Print("v" .. KDT.version .. " loaded. Type /kdt for options.")
     
     -- Register addon message prefix (this is safe)
@@ -56,7 +65,7 @@ EventUtil.ContinueOnAddOnLoaded(addonName, function()
         if el.Hide then el:Hide() end
     end
     for _, el in pairs(KDT.MainFrame.bisElements) do
-        if el.Hide then el:Hide() end
+        if type(el) == "table" and el.Hide then el:Hide() end
     end
     for _, el in pairs(KDT.MainFrame.talentsElements) do
         if el.Hide then el:Hide() end

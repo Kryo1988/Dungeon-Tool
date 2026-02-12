@@ -1,7 +1,6 @@
 -- Kryos Dungeon Tool
--- Data/BisData.lua - Best in Slot Gear Data with Import System
--- Data Source: Archon.gg (archon.gg/wow/builds) - Live Meta Data
--- Version: 1.7
+-- Data/BisData.lua - Best in Slot data bridge to PeaversBestInSlotData
+-- Version: 2.0 - Fully driven by PeaversBestInSlotData addon
 
 local addonName, KDT = ...
 
@@ -16,6 +15,7 @@ KDT.BIS_SOURCE = {
     DELVE = "Delve",
     WORLD = "World",
     PVP = "PvP",
+    UNKNOWN = "???",
 }
 
 KDT.SLOT_ORDER = {
@@ -33,7 +33,7 @@ KDT.SLOT_NAMES = {
 
 KDT.SPEC_NAMES = {
     [250] = "Blood", [251] = "Frost", [252] = "Unholy",
-    [577] = "Havoc", [581] = "Vengeance", [1480] = "Devourer",  -- DH has 3 specs in Midnight!
+    [577] = "Havoc", [581] = "Vengeance", [1480] = "Devourer",
     [102] = "Balance", [103] = "Feral", [104] = "Guardian", [105] = "Restoration",
     [1467] = "Devastation", [1468] = "Preservation", [1473] = "Augmentation",
     [253] = "Beast Mastery", [254] = "Marksmanship", [255] = "Survival",
@@ -49,19 +49,303 @@ KDT.SPEC_NAMES = {
 
 -- =============================================================================
 -- HERO TALENT SPEC MAPPING (TWW)
--- Maps Hero Talent SpecIDs to their base spec for BiS data lookup
--- Hero Talents don't change gear - they use the same BiS as base spec
--- Note: 1480 (Devourer) is NOT a hero talent - it's a new 3rd DH spec in Midnight
 -- =============================================================================
-KDT.HERO_SPEC_TO_BASE = {
-    -- Add Hero Talent mappings here as needed
-    -- Example: [heroTalentSpecID] = baseSpecID,
-}
+KDT.HERO_SPEC_TO_BASE = {}
 
--- Helper function to get base spec ID for BiS lookup
 function KDT:GetBaseSpecID(specID)
     return self.HERO_SPEC_TO_BASE[specID] or specID
 end
+
+-- =============================================================================
+-- PEAVERS BESTINSLOTDATA BRIDGE
+-- =============================================================================
+
+KDT.bisMode = "overall"  -- "overall", "raid", "dungeon", "custom"
+
+-- PeaversBestInSlotData slot ID (numeric) -> KDT slot key (string)
+local PEAVERS_SLOT_MAP = {
+    [1]  = "HEAD",
+    [2]  = "NECK",
+    [3]  = "SHOULDER",
+    [5]  = "CHEST",
+    [6]  = "WAIST",
+    [7]  = "LEGS",
+    [8]  = "FEET",
+    [9]  = "WRIST",
+    [10] = "HANDS",
+    [11] = "FINGER1",
+    [12] = "FINGER2",
+    [13] = "TRINKET1",
+    [14] = "TRINKET2",
+    [15] = "BACK",
+    [16] = "MAINHAND",
+    [17] = "OFFHAND",
+}
+
+-- SpecID -> ClassID mapping (WoW standard)
+local SPEC_TO_CLASS = {
+    [71] = 1, [72] = 1, [73] = 1,           -- Warrior
+    [65] = 2, [66] = 2, [70] = 2,           -- Paladin
+    [253] = 3, [254] = 3, [255] = 3,        -- Hunter
+    [259] = 4, [260] = 4, [261] = 4,        -- Rogue
+    [256] = 5, [257] = 5, [258] = 5,        -- Priest
+    [250] = 6, [251] = 6, [252] = 6,        -- Death Knight
+    [262] = 7, [263] = 7, [264] = 7,        -- Shaman
+    [62] = 8, [63] = 8, [64] = 8,           -- Mage
+    [265] = 9, [266] = 9, [267] = 9,        -- Warlock
+    [268] = 10, [269] = 10, [270] = 10,     -- Monk
+    [102] = 11, [103] = 11, [104] = 11, [105] = 11,  -- Druid
+    [577] = 12, [581] = 12, [1480] = 12,    -- Demon Hunter
+    [1467] = 13, [1468] = 13, [1473] = 13,  -- Evoker
+}
+
+-- Source classification based on actual dropSource (where the item drops)
+-- Season 3 known dungeons — everything else that's not Crafted is assumed RAID
+local KNOWN_DUNGEONS = {
+    ["Ara-Kara, City of Echoes"] = true,
+    ["Cinderbrew Meadery"] = true,
+    ["Eco-Dome Al'dani"] = true,
+    ["Grim Batol"] = true,
+    ["Halls of Atonement"] = true,
+    ["Operation: Floodgate"] = true,
+    ["Priory of the Sacred Flame"] = true,
+    ["Spires of Ascension"] = true,
+    ["Tazavesh, the Veiled Market"] = true,
+    ["The Dawnbreaker"] = true,
+    ["The Stonevault"] = true,
+}
+
+-- Classify an item's actual drop source from its dropSource string
+local function ClassifyDropSource(dropSource)
+    if not dropSource or dropSource == "" then
+        return "UNKNOWN"
+    elseif dropSource == "Crafted" then
+        return "CRAFTED"
+    elseif KNOWN_DUNGEONS[dropSource] then
+        return "MYTHIC_PLUS"
+    else
+        -- Everything else (Manaforge Omega, The Dreamrift, Nerub-ar Palace, etc.)
+        return "RAID"
+    end
+end
+
+function KDT:IsPeaversBisAvailable()
+    return _G["PeaversBestInSlotData"] and _G["PeaversBestInSlotData"].API ~= nil
+end
+
+-- Pre-cache item IDs so GetItemInfo resolves names on next call
+local function PreCacheItems(bisList)
+    if not bisList or not C_Item or not C_Item.RequestLoadItemDataByID then return end
+    for _, items in pairs(bisList) do
+        if items then
+            for _, item in ipairs(items) do
+                if item.itemID and item.itemID > 0 then
+                    C_Item.RequestLoadItemDataByID(item.itemID)
+                end
+            end
+        end
+    end
+end
+
+-- Resolve item name via WoW API with Peavers fallback
+local function ResolveItemName(itemID, fallbackName)
+    if not itemID or itemID == 0 then return fallbackName or "Unknown" end
+    if C_Item and C_Item.RequestLoadItemDataByID then
+        C_Item.RequestLoadItemDataByID(itemID)
+    end
+    return GetItemInfo(itemID) or fallbackName or "Loading..."
+end
+
+-- Build a KDT item entry from a Peavers item
+local function BuildItemEntry(item)
+    local drop = item.dropSource or ""
+    return {
+        name = ResolveItemName(item.itemID, item.itemName),
+        itemID = item.itemID or 0,
+        source = ClassifyDropSource(drop),
+        sourceDetail = (drop ~= "Crafted" and drop ~= "") and drop or "",
+    }
+end
+
+-- Collect ALL items from both Peavers databases into a unified pool per slot
+-- Returns: { [slotID] = { {item=..., priority=...}, ... }, ... }
+local function CollectAllItems(classID, specID)
+    local API = _G["PeaversBestInSlotData"].API
+    local raidList = API.GetFullBiSList(classID, specID, "raid")
+    local dungeonList = API.GetFullBiSList(classID, specID, "dungeon")
+
+    if not raidList and not dungeonList then return nil end
+
+    PreCacheItems(raidList)
+    PreCacheItems(dungeonList)
+
+    -- Merge both lists, dedup by itemID per slot
+    local pool = {}
+    local allSlotIDs = {1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17}
+
+    for _, slotID in ipairs(allSlotIDs) do
+        pool[slotID] = {}
+        local seen = {}
+
+        -- Add raid items
+        if raidList and raidList[slotID] then
+            for _, item in ipairs(raidList[slotID]) do
+                if item.itemID and not seen[item.itemID] then
+                    seen[item.itemID] = true
+                    table.insert(pool[slotID], item)
+                end
+            end
+        end
+
+        -- Add dungeon items (skip dupes)
+        if dungeonList and dungeonList[slotID] then
+            for _, item in ipairs(dungeonList[slotID]) do
+                if item.itemID and not seen[item.itemID] then
+                    seen[item.itemID] = true
+                    table.insert(pool[slotID], item)
+                end
+            end
+        end
+    end
+
+    return pool
+end
+
+-- Paired slots: Peavers puts both rings into slot 11, both trinkets into slot 13
+-- We need to take top 2 items and spread them across both KDT slots
+local PAIRED_SLOTS = {
+    [11] = 12,   -- FINGER1 -> FINGER2
+    [13] = 14,   -- TRINKET1 -> TRINKET2
+}
+
+-- Get BiS with preferred source priority
+-- preferSource: "RAID" or "MYTHIC_PLUS" — items from this source are picked first
+-- excludeSource: the opposite source, only used as fallback-blocker
+-- nil/nil = overall (best from everything)
+function KDT:GetBisFromPeaversFiltered(specID, preferSource, excludeSource)
+    if not self:IsPeaversBisAvailable() then return nil end
+    local classID = SPEC_TO_CLASS[specID]
+    if not classID then return nil end
+
+    local pool = CollectAllItems(classID, specID)
+    if not pool then return nil end
+
+    local result = {}
+    local pairedSecondaryHandled = {}
+    local orderedSlotIDs = {1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17}
+
+    -- Helper: from a list of items, pick best by priority with two-tier logic
+    -- Tier 1: items matching preferSource
+    -- Tier 2: items NOT matching excludeSource (fallback: Crafted, World, PvP, Delve, Unknown)
+    -- Returns up to `count` items sorted by priority
+    local function PickBestItems(items, count)
+        if not items or #items == 0 then return {} end
+
+        -- Split items into preferred and fallback
+        local preferred = {}
+        local fallback = {}
+        for _, item in ipairs(items) do
+            local src = ClassifyDropSource(item.dropSource)
+            if preferSource and src == preferSource then
+                table.insert(preferred, item)
+            elseif not excludeSource or src ~= excludeSource then
+                table.insert(fallback, item)
+            end
+        end
+
+        -- Sort both by priority
+        table.sort(preferred, function(a, b) return (a.priority or 99) < (b.priority or 99) end)
+        table.sort(fallback, function(a, b) return (a.priority or 99) < (b.priority or 99) end)
+
+        -- If no preferSource set (overall mode), just sort everything
+        if not preferSource then
+            local all = {}
+            for _, item in ipairs(items) do table.insert(all, item) end
+            table.sort(all, function(a, b) return (a.priority or 99) < (b.priority or 99) end)
+            local out = {}
+            for i = 1, math.min(count, #all) do out[i] = all[i] end
+            return out
+        end
+
+        -- Fill results: preferred first, then fallback only for remaining empty slots
+        local out = {}
+        for i = 1, math.min(count, #preferred) do
+            out[#out + 1] = preferred[i]
+        end
+        -- Only fill remaining slots with fallback
+        if #out < count then
+            for i = 1, #fallback do
+                if #out >= count then break end
+                -- Don't add dupes (same itemID)
+                local dominated = false
+                for _, picked in ipairs(out) do
+                    if picked.itemID == fallback[i].itemID then dominated = true; break end
+                end
+                if not dominated then
+                    out[#out + 1] = fallback[i]
+                end
+            end
+        end
+        return out
+    end
+
+    for _, slotID in ipairs(orderedSlotIDs) do
+        local items = pool[slotID]
+        local kdtSlot = PEAVERS_SLOT_MAP[slotID]
+        if kdtSlot and items and not pairedSecondaryHandled[slotID] then
+            local secondarySlotID = PAIRED_SLOTS[slotID]
+            local isPaired = secondarySlotID ~= nil
+
+            -- For paired slots, pick top 2; for normal slots, pick top 1
+            local neededCount = isPaired and 2 or 1
+            local best = PickBestItems(items, neededCount)
+
+            if best[1] then
+                result[kdtSlot] = BuildItemEntry(best[1])
+            end
+
+            if isPaired then
+                local secondaryKdtSlot = PEAVERS_SLOT_MAP[secondarySlotID]
+                if secondaryKdtSlot then
+                    -- Check if secondary slot has its own data
+                    local secondaryPool = pool[secondarySlotID]
+                    if secondaryPool and #secondaryPool > 0 then
+                        local secBest = PickBestItems(secondaryPool, 1)
+                        if secBest[1] then
+                            result[secondaryKdtSlot] = BuildItemEntry(secBest[1])
+                        end
+                    elseif best[2] then
+                        result[secondaryKdtSlot] = BuildItemEntry(best[2])
+                    end
+                    pairedSecondaryHandled[secondarySlotID] = true
+                end
+            end
+        end
+    end
+
+    return (next(result) and result) or nil
+end
+
+-- Convenience wrappers
+function KDT:GetBisFromPeavers(specID, contentType)
+    -- Raid tab: prefer RAID drops, exclude M+ drops, fallback to Crafted/World/etc
+    -- M+ tab: prefer M+ drops, exclude RAID drops, fallback to Crafted/World/etc
+    if contentType == "raid" then
+        return self:GetBisFromPeaversFiltered(specID, "RAID", "MYTHIC_PLUS")
+    elseif contentType == "dungeon" then
+        return self:GetBisFromPeaversFiltered(specID, "MYTHIC_PLUS", "RAID")
+    end
+    return nil
+end
+
+function KDT:GetBisOverallFromPeavers(specID)
+    -- No preference, no exclusion = best from ALL sources
+    return self:GetBisFromPeaversFiltered(specID, nil, nil)
+end
+
+-- =============================================================================
+-- ARCHON URL SLUGS
+-- =============================================================================
 
 KDT.ARCHON_SPEC_SLUGS = {
     [250] = "blood/death-knight", [251] = "frost/death-knight", [252] = "unholy/death-knight",
@@ -80,8 +364,9 @@ KDT.ARCHON_SPEC_SLUGS = {
 }
 
 -- =============================================================================
--- ENCHANT DATA (Season 3 - TWW 11.2)
+-- ENCHANT & GEM DATA
 -- =============================================================================
+
 KDT.ENCHANT_DATA = {
     [223781] = {name = "Authority of Radiant Power", slot = "WEAPON"},
     [223784] = {name = "Authority of the Depths", slot = "WEAPON"},
@@ -102,9 +387,6 @@ KDT.ENCHANT_DATA = {
     [223683] = {name = "Radiant Versatility", slot = "RING"},
 }
 
--- =============================================================================
--- GEM DATA (Season 3 - TWW 11.2)
--- =============================================================================
 KDT.GEM_DATA = {
     [213743] = {name = "Culminating Blasphemite", type = "META", stats = "Crit + Proc"},
     [213746] = {name = "Incandescent Blasphemite", type = "META", stats = "Damage Proc"},
@@ -114,848 +396,24 @@ KDT.GEM_DATA = {
     [213458] = {name = "Masterful Emerald", type = "EPIC", stats = "Mastery/Haste"},
 }
 
--- =============================================================================
--- DEFAULT BiS DATA (Season 3 - Manaforge Omega - Archon.gg Data)
--- =============================================================================
-
-KDT.BIS_DATA = {
-    -- ROGUE - OUTLAW (260)
-    [260] = {
-        HEAD = { name = "Gatecrasher's Guise", itemID = 237668, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        NECK = { name = "Amulet of Earthen Craftsmanship", itemID = 215136, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom" },
-        SHOULDER = { name = "Gatecrasher's Shoulderpads", itemID = 237666, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive", enchant = 223731 },
-        CHEST = { name = "Gatecrasher's Vest", itemID = 237671, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 223692 },
-        WRIST = { name = "Rune-Branded Armbands", itemID = 219334, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom", enchant = 223713 },
-        HANDS = { name = "Gatecrasher's Handguards", itemID = 237669, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        WAIST = { name = "Rune-Branded Waistband", itemID = 219331, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        LEGS = { name = "Gatecrasher's Breeches", itemID = 237667, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 219911 },
-        FEET = { name = "Interloper's Reinforced Sandals", itemID = 243306, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Vers/Haste", enchant = 223656 },
-        FINGER1 = { name = "Ring of Earthen Craftsmanship", itemID = 215135, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom", enchant = 223680 },
-        FINGER2 = { name = "Logic Gate: Alpha", itemID = 237567, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Custom", enchant = 223680 },
-        TRINKET1 = { name = "Sigil of the Cosmic Hunt", itemID = 242397, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        TRINKET2 = { name = "Astral Antenna", itemID = 242395, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        MAINHAND = { name = "Everforged Dagger", itemID = 222442, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223781 },
-        OFFHAND = { name = "Everforged Dagger", itemID = 222442, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223784 },
-    },
-    
-    -- ROGUE - ASSASSINATION (259)
-    [259] = {
-        HEAD = { name = "Gatecrasher's Guise", itemID = 237668, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        NECK = { name = "Amulet of Earthen Craftsmanship", itemID = 215136, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom" },
-        SHOULDER = { name = "Gatecrasher's Shoulderpads", itemID = 237666, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive", enchant = 223731 },
-        CHEST = { name = "Gatecrasher's Vest", itemID = 237671, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 223692 },
-        WRIST = { name = "Rune-Branded Armbands", itemID = 219334, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom", enchant = 223713 },
-        HANDS = { name = "Gatecrasher's Handguards", itemID = 237669, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        WAIST = { name = "Rune-Branded Waistband", itemID = 219331, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        LEGS = { name = "Gatecrasher's Breeches", itemID = 237667, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 219911 },
-        FEET = { name = "Interloper's Reinforced Sandals", itemID = 243306, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Vers/Haste", enchant = 223656 },
-        FINGER1 = { name = "Ring of Earthen Craftsmanship", itemID = 215135, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom", enchant = 223680 },
-        FINGER2 = { name = "Signet of the False Accuser", itemID = 178824, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Custom", enchant = 223680 },
-        TRINKET1 = { name = "Sigil of the Cosmic Hunt", itemID = 242397, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        TRINKET2 = { name = "Astral Antenna", itemID = 242395, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        MAINHAND = { name = "Everforged Dagger", itemID = 222442, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223781 },
-        OFFHAND = { name = "Everforged Dagger", itemID = 222442, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223784 },
-    },
-    
-    -- ROGUE - SUBTLETY (261)
-    [261] = {
-        HEAD = { name = "Gatecrasher's Guise", itemID = 237668, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        NECK = { name = "Amulet of Earthen Craftsmanship", itemID = 215136, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom" },
-        SHOULDER = { name = "Gatecrasher's Shoulderpads", itemID = 237666, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive", enchant = 223731 },
-        CHEST = { name = "Gatecrasher's Vest", itemID = 237671, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 223692 },
-        WRIST = { name = "Rune-Branded Armbands", itemID = 219334, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom", enchant = 223713 },
-        HANDS = { name = "Gatecrasher's Handguards", itemID = 237669, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        WAIST = { name = "Rune-Branded Waistband", itemID = 219331, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        LEGS = { name = "Gatecrasher's Breeches", itemID = 237667, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 219911 },
-        FEET = { name = "Interloper's Reinforced Sandals", itemID = 243306, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Vers/Haste", enchant = 223656 },
-        FINGER1 = { name = "Ring of Earthen Craftsmanship", itemID = 215135, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom", enchant = 223680 },
-        FINGER2 = { name = "Signet of the False Accuser", itemID = 178824, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Custom", enchant = 223680 },
-        TRINKET1 = { name = "Sigil of the Cosmic Hunt", itemID = 242397, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        TRINKET2 = { name = "Cursed Stone Idol", itemID = 246344, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        MAINHAND = { name = "Everforged Dagger", itemID = 222442, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223781 },
-        OFFHAND = { name = "Everforged Dagger", itemID = 222442, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223784 },
-    },
-    
-    -- DEMON HUNTER - HAVOC (577) - Updated from Archon.gg 2025-01-29
-    [577] = {
-        HEAD = { name = "Charhound's Vicious Scalp", itemID = 237691, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        NECK = { name = "Amulet of Earthen Craftsmanship", itemID = 215136, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom" },
-        SHOULDER = { name = "Charhound's Vicious Hornguards", itemID = 237689, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive", enchant = 223731 },
-        CHEST = { name = "Charhound's Vicious Bindings", itemID = 237694, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 223692 },
-        WRIST = { name = "Rune-Branded Armbands", itemID = 219334, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom", enchant = 223713 },
-        HANDS = { name = "Charhound's Vicious Felclaws", itemID = 237692, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        WAIST = { name = "Rune-Branded Waistband", itemID = 219331, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        LEGS = { name = "Charhound's Vicious Hidecoat", itemID = 237690, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 219911 },
-        FEET = { name = "Interloper's Reinforced Sandals", itemID = 243306, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Vers/Haste", enchant = 223656 },
-        FINGER1 = { name = "Ring of Earthen Craftsmanship", itemID = 215135, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom", enchant = 223680 },
-        FINGER2 = { name = "Logic Gate: Alpha", itemID = 237567, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Custom", enchant = 223680 },
-        TRINKET1 = { name = "Astral Antenna", itemID = 242395, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        TRINKET2 = { name = "Cursed Stone Idol", itemID = 246344, source = "MYTHIC_PLUS", sourceDetail = "M+", stats = "Proc" },
-        MAINHAND = { name = "Everforged Warglaive", itemID = 222441, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223781 },
-        OFFHAND = { name = "Everforged Warglaive", itemID = 222441, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223784 },
-    },
-    
-    -- DEMON HUNTER - VENGEANCE (581)
-    [581] = {
-        HEAD = { name = "Charhound's Vicious Scalp", itemID = 237691, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        NECK = { name = "Ornately Engraved Amplifier", itemID = 185842, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Custom" },
-        SHOULDER = { name = "Charhound's Vicious Hornguards", itemID = 237689, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive", enchant = 223731 },
-        CHEST = { name = "Charhound's Vicious Bindings", itemID = 237694, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 223692 },
-        WRIST = { name = "Rune-Branded Armbands", itemID = 219334, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom", enchant = 223713 },
-        HANDS = { name = "Charhound's Vicious Felclaws", itemID = 237692, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        WAIST = { name = "Rune-Branded Waistband", itemID = 219331, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        LEGS = { name = "Charhound's Vicious Hidecoat", itemID = 237690, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 219911 },
-        FEET = { name = "Interloper's Reinforced Sandals", itemID = 243306, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Vers/Haste", enchant = 223656 },
-        FINGER1 = { name = "Ring of Earthen Craftsmanship", itemID = 215135, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom", enchant = 223680 },
-        FINGER2 = { name = "Ring of the Panoply", itemID = 246281, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Custom", enchant = 223680 },
-        TRINKET1 = { name = "Astral Antenna", itemID = 242395, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        TRINKET2 = { name = "Brand of Ceaseless Ire", itemID = 242401, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        MAINHAND = { name = "Everforged Warglaive", itemID = 222441, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223781 },
-        OFFHAND = { name = "Everforged Warglaive", itemID = 222441, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223784 },
-    },
-    
-    -- DEMON HUNTER - DEVOURER (1480) - New 3rd Spec in Midnight
-    -- Data from Archon.gg 2026-02-04
-    [1480] = {
-        HEAD = { name = "Charhound's Vicious Scalp", itemID = 241765, source = "MYTHIC_PLUS", sourceDetail = "Mythic+ Popular", stats = "Mastery/Haste", gems = {213467} },
-        NECK = { name = "Amulet of Earthen Craftsmanship", itemID = 235513, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom", gems = {213467, 213467} },
-        SHOULDER = { name = "Charhound's Vicious Hornguards", itemID = 241767, source = "MYTHIC_PLUS", sourceDetail = "Mythic+ Popular", stats = "Crit/Vers" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive", enchant = 223731 },
-        CHEST = { name = "Charhound's Vicious Vest", itemID = 241764, source = "MYTHIC_PLUS", sourceDetail = "Mythic+ Popular", stats = "Mastery/Haste", enchant = 223692 },
-        WRIST = { name = "Charhound's Vicious Bindings", itemID = 241768, source = "MYTHIC_PLUS", sourceDetail = "Mythic+ Popular", stats = "Crit/Mastery", enchant = 223713, gems = {213467} },
-        HANDS = { name = "Charhound's Vicious Felclaws", itemID = 241769, source = "MYTHIC_PLUS", sourceDetail = "Mythic+ Popular", stats = "Mastery/Crit" },
-        WAIST = { name = "Rune-Branded Waistband", itemID = 219331, source = "CRAFTED", sourceDetail = "Leatherworking", stats = "Custom", gems = {213467} },
-        LEGS = { name = "Charhound's Vicious Legguards", itemID = 241766, source = "MYTHIC_PLUS", sourceDetail = "Mythic+ Popular", stats = "Mastery/Haste", enchant = 219911 },
-        FEET = { name = "Interloper's Reinforced Sandals", itemID = 243306, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Vers/Mastery", enchant = 223656 },
-        FINGER1 = { name = "Logic Gate: Alpha", itemID = 242405, source = "MYTHIC_PLUS", sourceDetail = "Plexus Sentinel", stats = "Mastery/Haste", enchant = 223680, gems = {213467, 213467} },
-        FINGER2 = { name = "Signet of Collapsing Stars", itemID = 185813, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Haste/Vers", enchant = 223680, gems = {213467, 213467} },
-        TRINKET1 = { name = "Astral Antenna", itemID = 242395, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Agi + Proc" },
-        TRINKET2 = { name = "Chant of Winged Grace", itemID = 242389, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Agi + Proc" },
-        MAINHAND = { name = "Everforged Warglaive", itemID = 234496, source = "MYTHIC_PLUS", sourceDetail = "Mythic+ Popular", stats = "Agi Warglaive", enchant = 223781 },
-        OFFHAND = { name = "Collapsing Phaseblades", itemID = 241770, source = "MYTHIC_PLUS", sourceDetail = "Mythic+ Popular", stats = "Agi Dual" },
-    },
-    
-    -- WARRIOR - FURY (72) - Fixed from Archon.gg 2025-01-29
-    [72] = {
-        HEAD = { name = "Living Weapon's Faceshield", itemID = 237610, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        NECK = { name = "Amulet of Earthen Craftsmanship", itemID = 215136, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom" },
-        SHOULDER = { name = "Living Weapon's Ramparts", itemID = 237608, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive", enchant = 223731 },
-        CHEST = { name = "Living Weapon's Bulwark", itemID = 237613, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 223692 },
-        WRIST = { name = "Everforged Vambraces", itemID = 222435, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom", enchant = 223713 },
-        HANDS = { name = "Living Weapon's Crushers", itemID = 237611, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        WAIST = { name = "Everforged Greatbelt", itemID = 222431, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        LEGS = { name = "Living Weapon's Legguards", itemID = 237609, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 219911 },
-        FEET = { name = "Interloper's Plated Sabatons", itemID = 243307, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Vers/Haste", enchant = 223656 },
-        FINGER1 = { name = "Ring of Earthen Craftsmanship", itemID = 215135, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom", enchant = 223680 },
-        FINGER2 = { name = "Signet of the False Accuser", itemID = 178824, source = "MYTHIC_PLUS", sourceDetail = "Halls of Atonement", stats = "Custom", enchant = 223680 },
-        TRINKET1 = { name = "Astral Antenna", itemID = 242395, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        TRINKET2 = { name = "Cursed Stone Idol", itemID = 246344, source = "MYTHIC_PLUS", sourceDetail = "M+", stats = "Proc" },
-        MAINHAND = { name = "Circuit Breaker", itemID = 234490, source = "MYTHIC_PLUS", sourceDetail = "Operation Mechagon", stats = "Weapon", enchant = 223781 },
-        OFFHAND = { name = "Charged Claymore", itemID = 222447, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223784 },
-    },
-    
-    -- WARRIOR - ARMS (71) - Fixed from Archon.gg 2025-01-29
-    [71] = {
-        HEAD = { name = "Living Weapon's Faceshield", itemID = 237610, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        NECK = { name = "Amulet of Earthen Craftsmanship", itemID = 215136, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom" },
-        SHOULDER = { name = "Living Weapon's Ramparts", itemID = 237608, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive", enchant = 223731 },
-        CHEST = { name = "Living Weapon's Bulwark", itemID = 237613, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 223692 },
-        WRIST = { name = "Everforged Vambraces", itemID = 222435, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom", enchant = 223713 },
-        HANDS = { name = "Living Weapon's Crushers", itemID = 237611, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        WAIST = { name = "Everforged Greatbelt", itemID = 222431, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        LEGS = { name = "Living Weapon's Legguards", itemID = 237609, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 219911 },
-        FEET = { name = "Interloper's Plated Sabatons", itemID = 243307, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Vers/Haste", enchant = 223656 },
-        FINGER1 = { name = "Ring of Earthen Craftsmanship", itemID = 215135, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom", enchant = 223680 },
-        FINGER2 = { name = "Band of the Shattered Soul", itemID = 242405, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Custom", enchant = 223680 },
-        TRINKET1 = { name = "Astral Antenna", itemID = 242395, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        TRINKET2 = { name = "Cursed Stone Idol", itemID = 246344, source = "MYTHIC_PLUS", sourceDetail = "M+", stats = "Proc" },
-        MAINHAND = { name = "Charged Claymore", itemID = 222447, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223781 },
-        OFFHAND = nil,
-    },
-    
-    -- WARRIOR - PROTECTION (73) - Fixed from Archon.gg 2025-01-29
-    [73] = {
-        HEAD = { name = "Living Weapon's Faceshield", itemID = 237610, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        NECK = { name = "Amulet of Earthen Craftsmanship", itemID = 215136, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom" },
-        SHOULDER = { name = "Living Weapon's Ramparts", itemID = 237608, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive", enchant = 223731 },
-        CHEST = { name = "Living Weapon's Bulwark", itemID = 237613, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 223692 },
-        WRIST = { name = "Everforged Vambraces", itemID = 222435, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom", enchant = 223713 },
-        HANDS = { name = "Living Weapon's Crushers", itemID = 237611, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        WAIST = { name = "Everforged Greatbelt", itemID = 222431, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        LEGS = { name = "Living Weapon's Legguards", itemID = 237609, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 219911 },
-        FEET = { name = "Interloper's Plated Sabatons", itemID = 243307, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Vers/Haste", enchant = 223656 },
-        FINGER1 = { name = "Ring of Earthen Craftsmanship", itemID = 215135, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom", enchant = 223680 },
-        FINGER2 = { name = "High Nerubian Signet", itemID = 221141, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Custom", enchant = 223680 },
-        TRINKET1 = { name = "Brand of Ceaseless Ire", itemID = 242401, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        TRINKET2 = { name = "Astral Antenna", itemID = 242395, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        MAINHAND = { name = "Everforged Longsword", itemID = 222440, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223781 },
-        OFFHAND = { name = "Charged Defender", itemID = 222446, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223784 },
-    },
-    
-    -- DEATH KNIGHT - FROST (251)
-    [251] = {
-        HEAD = { name = "Hollow Sentinel's Stonemask", itemID = 237628, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        NECK = { name = "Amulet of Earthen Craftsmanship", itemID = 215136, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom" },
-        SHOULDER = { name = "Hollow Sentinel's Perches", itemID = 237626, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive", enchant = 223731 },
-        CHEST = { name = "Hollow Sentinel's Breastplate", itemID = 237631, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 223692 },
-        WRIST = { name = "Everforged Vambraces", itemID = 222435, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom", enchant = 223713 },
-        HANDS = { name = "Hollow Sentinel's Gauntlets", itemID = 237629, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        WAIST = { name = "Everforged Greatbelt", itemID = 222431, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        LEGS = { name = "Hollow Sentinel's Stonekilt", itemID = 237627, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 219911 },
-        FEET = { name = "Interloper's Plated Sabatons", itemID = 243307, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Vers/Haste", enchant = 223656 },
-        FINGER1 = { name = "Ring of Earthen Craftsmanship", itemID = 215135, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom", enchant = 223680 },
-        FINGER2 = { name = "Logic Gate: Alpha", itemID = 237567, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Custom", enchant = 223680 },
-        TRINKET1 = { name = "Astral Antenna", itemID = 242395, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        TRINKET2 = { name = "Cursed Stone Idol", itemID = 246344, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        MAINHAND = { name = "Charged Claymore", itemID = 222447, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223781 },
-        OFFHAND = nil,
-    },
-    
-    -- DEATH KNIGHT - UNHOLY (252)
-    [252] = {
-        HEAD = { name = "Hollow Sentinel's Stonemask", itemID = 237628, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        NECK = { name = "Amulet of Earthen Craftsmanship", itemID = 215136, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom" },
-        SHOULDER = { name = "Hollow Sentinel's Perches", itemID = 237626, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive", enchant = 223731 },
-        CHEST = { name = "Hollow Sentinel's Breastplate", itemID = 237631, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 223692 },
-        WRIST = { name = "Everforged Vambraces", itemID = 222435, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom", enchant = 223713 },
-        HANDS = { name = "Hollow Sentinel's Gauntlets", itemID = 237629, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        WAIST = { name = "Everforged Greatbelt", itemID = 222431, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        LEGS = { name = "Hollow Sentinel's Stonekilt", itemID = 237627, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 219911 },
-        FEET = { name = "Interloper's Plated Sabatons", itemID = 243307, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Vers/Haste", enchant = 223656 },
-        FINGER1 = { name = "Ring of Earthen Craftsmanship", itemID = 215135, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom", enchant = 223680 },
-        FINGER2 = { name = "Signet of the False Accuser", itemID = 178824, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Custom", enchant = 223680 },
-        TRINKET1 = { name = "Astral Antenna", itemID = 242395, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        TRINKET2 = { name = "Cursed Stone Idol", itemID = 246344, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        MAINHAND = { name = "Charged Claymore", itemID = 222447, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223781 },
-        OFFHAND = nil,
-    },
-    
-    -- DEATH KNIGHT - BLOOD (250)
-    [250] = {
-        HEAD = { name = "Hollow Sentinel's Stonemask", itemID = 237628, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        NECK = { name = "Amulet of Earthen Craftsmanship", itemID = 215136, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom" },
-        SHOULDER = { name = "Hollow Sentinel's Perches", itemID = 237626, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive", enchant = 223731 },
-        CHEST = { name = "Hollow Sentinel's Breastplate", itemID = 237631, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 223692 },
-        WRIST = { name = "Everforged Vambraces", itemID = 222435, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom", enchant = 223713 },
-        HANDS = { name = "Hollow Sentinel's Gauntlets", itemID = 237629, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        WAIST = { name = "Everforged Greatbelt", itemID = 222431, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        LEGS = { name = "Hollow Sentinel's Stonekilt", itemID = 237627, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 219911 },
-        FEET = { name = "Interloper's Plated Sabatons", itemID = 243307, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Vers/Haste", enchant = 223656 },
-        FINGER1 = { name = "Ring of Earthen Craftsmanship", itemID = 215135, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom", enchant = 223680 },
-        FINGER2 = { name = "High Nerubian Signet", itemID = 221141, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Custom", enchant = 223680 },
-        TRINKET1 = { name = "Brand of Ceaseless Ire", itemID = 242401, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        TRINKET2 = { name = "Astral Antenna", itemID = 242395, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        MAINHAND = { name = "Charged Claymore", itemID = 222447, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223781 },
-        OFFHAND = nil,
-    },
-    
-    -- MAGE - FIRE (63)
-    [63] = {
-        HEAD = { name = "Cowl of the Cryptic Illusionist", itemID = 237680, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        NECK = { name = "Amulet of Earthen Craftsmanship", itemID = 215136, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom" },
-        SHOULDER = { name = "Mantle of the Cryptic Illusionist", itemID = 237678, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive", enchant = 223731 },
-        CHEST = { name = "Robes of the Cryptic Illusionist", itemID = 237681, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 223692 },
-        WRIST = { name = "Weavercloth Wristwraps", itemID = 222424, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom", enchant = 223713 },
-        HANDS = { name = "Gloves of the Cryptic Illusionist", itemID = 237677, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        WAIST = { name = "Weavercloth Sash", itemID = 222420, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        LEGS = { name = "Trousers of the Cryptic Illusionist", itemID = 237679, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 219911 },
-        FEET = { name = "Interloper's Woven Slippers", itemID = 243308, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Vers/Haste", enchant = 223656 },
-        FINGER1 = { name = "Ring of Earthen Craftsmanship", itemID = 215135, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom", enchant = 223680 },
-        FINGER2 = { name = "Logic Gate: Alpha", itemID = 237567, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Custom", enchant = 223680 },
-        TRINKET1 = { name = "Araz's Ritual Forge", itemID = 242399, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        TRINKET2 = { name = "Screams of a Forgotten Sky", itemID = 242398, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        MAINHAND = { name = "Ergospheric Shiftstaff", itemID = 237730, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223781 },
-        OFFHAND = nil,
-    },
-    
-    -- MAGE - FROST (64)
-    [64] = {
-        HEAD = { name = "Cowl of the Cryptic Illusionist", itemID = 237680, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        NECK = { name = "Amulet of Earthen Craftsmanship", itemID = 215136, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom" },
-        SHOULDER = { name = "Mantle of the Cryptic Illusionist", itemID = 237678, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive", enchant = 223731 },
-        CHEST = { name = "Robes of the Cryptic Illusionist", itemID = 237681, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 223692 },
-        WRIST = { name = "Weavercloth Wristwraps", itemID = 222424, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom", enchant = 223713 },
-        HANDS = { name = "Gloves of the Cryptic Illusionist", itemID = 237677, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        WAIST = { name = "Weavercloth Sash", itemID = 222420, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        LEGS = { name = "Trousers of the Cryptic Illusionist", itemID = 237679, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 219911 },
-        FEET = { name = "Interloper's Woven Slippers", itemID = 243308, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Vers/Haste", enchant = 223656 },
-        FINGER1 = { name = "Ring of Earthen Craftsmanship", itemID = 215135, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom", enchant = 223680 },
-        FINGER2 = { name = "Signet of Collapsing Stars", itemID = 185813, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Custom", enchant = 223680 },
-        TRINKET1 = { name = "Araz's Ritual Forge", itemID = 242399, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        TRINKET2 = { name = "So'leah's Secret Technique", itemID = 190958, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        MAINHAND = { name = "Ergospheric Shiftstaff", itemID = 237730, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223781 },
-        OFFHAND = nil,
-    },
-    
-    -- HUNTER - BEAST MASTERY (253)
-    [253] = {
-        HEAD = { name = "Deathstalker's Helmet", itemID = 237656, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        NECK = { name = "Amulet of Earthen Craftsmanship", itemID = 215136, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom" },
-        SHOULDER = { name = "Deathstalker's Shoulderguards", itemID = 237654, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive", enchant = 223731 },
-        CHEST = { name = "Deathstalker's Hauberk", itemID = 237657, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 223692 },
-        WRIST = { name = "Rune-Branded Bindings", itemID = 219334, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom", enchant = 223713 },
-        HANDS = { name = "Deathstalker's Gauntlets", itemID = 237653, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        WAIST = { name = "Rune-Branded Clasp", itemID = 219331, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        LEGS = { name = "Deathstalker's Leggings", itemID = 237655, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 219911 },
-        FEET = { name = "Interloper's Chainmail Sabatons", itemID = 243305, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Vers/Haste", enchant = 223656 },
-        FINGER1 = { name = "Ring of Earthen Craftsmanship", itemID = 215135, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom", enchant = 223680 },
-        FINGER2 = { name = "Signet of Collapsing Stars", itemID = 185813, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Custom", enchant = 223680 },
-        TRINKET1 = { name = "Sigil of the Cosmic Hunt", itemID = 242397, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        TRINKET2 = { name = "Astral Antenna", itemID = 242395, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        MAINHAND = { name = "Charged Bow", itemID = 222454, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223781 },
-        OFFHAND = nil,
-    },
-    
-    -- PALADIN - RETRIBUTION (70)
-    [70] = {
-        HEAD = { name = "Oathbinder's Faceguard", itemID = 237712, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        NECK = { name = "Amulet of Earthen Craftsmanship", itemID = 215136, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom" },
-        SHOULDER = { name = "Oathbinder's Spaulders", itemID = 237710, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive", enchant = 223731 },
-        CHEST = { name = "Oathbinder's Chestguard", itemID = 237715, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 223692 },
-        WRIST = { name = "Everforged Vambraces", itemID = 222435, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom", enchant = 223713 },
-        HANDS = { name = "Oathbinder's Gauntlets", itemID = 237713, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        WAIST = { name = "Everforged Greatbelt", itemID = 222431, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        LEGS = { name = "Oathbinder's Legguards", itemID = 237711, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 219911 },
-        FEET = { name = "Interloper's Plated Sabatons", itemID = 243307, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Vers/Haste", enchant = 223656 },
-        FINGER1 = { name = "Ring of Earthen Craftsmanship", itemID = 215135, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom", enchant = 223680 },
-        FINGER2 = { name = "Logic Gate: Alpha", itemID = 237567, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Custom", enchant = 223680 },
-        TRINKET1 = { name = "Sigil of the Cosmic Hunt", itemID = 242397, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        TRINKET2 = { name = "Astral Antenna", itemID = 242395, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        MAINHAND = { name = "Charged Claymore", itemID = 222447, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223781 },
-        OFFHAND = nil,
-    },
-    
-    -- PRIEST - SHADOW (258)
-    [258] = {
-        HEAD = { name = "Void-Preacher's Hood", itemID = 237704, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        NECK = { name = "Amulet of Earthen Craftsmanship", itemID = 215136, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom" },
-        SHOULDER = { name = "Void-Preacher's Mantle", itemID = 237702, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive", enchant = 223731 },
-        CHEST = { name = "Void-Preacher's Vestments", itemID = 237707, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 223692 },
-        WRIST = { name = "Weavercloth Wristwraps", itemID = 222424, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom", enchant = 223713 },
-        HANDS = { name = "Void-Preacher's Gloves", itemID = 237705, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        WAIST = { name = "Weavercloth Sash", itemID = 222420, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        LEGS = { name = "Void-Preacher's Trousers", itemID = 237703, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 219911 },
-        FEET = { name = "Interloper's Woven Slippers", itemID = 243308, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Vers/Haste", enchant = 223656 },
-        FINGER1 = { name = "Ring of Earthen Craftsmanship", itemID = 215135, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom", enchant = 223680 },
-        FINGER2 = { name = "Logic Gate: Alpha", itemID = 237567, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Custom", enchant = 223680 },
-        TRINKET1 = { name = "Araz's Ritual Forge", itemID = 242399, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        TRINKET2 = { name = "Screams of a Forgotten Sky", itemID = 242398, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        MAINHAND = { name = "Ergospheric Shiftstaff", itemID = 237730, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223781 },
-        OFFHAND = nil,
-    },
-    
-    -- DRUID - BALANCE (102)
-    [102] = {
-        HEAD = { name = "Arboreal Cultivator's Mask", itemID = 237640, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        NECK = { name = "Amulet of Earthen Craftsmanship", itemID = 215136, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom" },
-        SHOULDER = { name = "Arboreal Cultivator's Mantle", itemID = 237638, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive", enchant = 223731 },
-        CHEST = { name = "Arboreal Cultivator's Tunic", itemID = 237643, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 223692 },
-        WRIST = { name = "Rune-Branded Armbands", itemID = 219334, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom", enchant = 223713 },
-        HANDS = { name = "Arboreal Cultivator's Gloves", itemID = 237641, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        WAIST = { name = "Rune-Branded Waistband", itemID = 219331, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        LEGS = { name = "Arboreal Cultivator's Leggings", itemID = 237639, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 219911 },
-        FEET = { name = "Interloper's Reinforced Sandals", itemID = 243306, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Vers/Haste", enchant = 223656 },
-        FINGER1 = { name = "Ring of Earthen Craftsmanship", itemID = 215135, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom", enchant = 223680 },
-        FINGER2 = { name = "Logic Gate: Alpha", itemID = 237567, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Custom", enchant = 223680 },
-        TRINKET1 = { name = "Araz's Ritual Forge", itemID = 242399, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        TRINKET2 = { name = "Screams of a Forgotten Sky", itemID = 242398, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        MAINHAND = { name = "Charged Runestaff", itemID = 222453, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223781 },
-        OFFHAND = nil,
-    },
-    
-    -- MONK - WINDWALKER (269)
-    [269] = {
-        HEAD = { name = "Mystic Heron's Hat", itemID = 237648, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        NECK = { name = "Amulet of Earthen Craftsmanship", itemID = 215136, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom" },
-        SHOULDER = { name = "Mystic Heron's Shoulderpads", itemID = 237646, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive", enchant = 223731 },
-        CHEST = { name = "Mystic Heron's Jerkin", itemID = 237651, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 223692 },
-        WRIST = { name = "Rune-Branded Armbands", itemID = 219334, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom", enchant = 223713 },
-        HANDS = { name = "Mystic Heron's Handwraps", itemID = 237649, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        WAIST = { name = "Rune-Branded Waistband", itemID = 219331, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        LEGS = { name = "Mystic Heron's Legguards", itemID = 237647, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 219911 },
-        FEET = { name = "Interloper's Reinforced Sandals", itemID = 243306, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Vers/Haste", enchant = 223656 },
-        FINGER1 = { name = "Ring of Earthen Craftsmanship", itemID = 215135, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom", enchant = 223680 },
-        FINGER2 = { name = "Logic Gate: Alpha", itemID = 237567, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Custom", enchant = 223680 },
-        TRINKET1 = { name = "Sigil of the Cosmic Hunt", itemID = 242397, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        TRINKET2 = { name = "Astral Antenna", itemID = 242395, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        MAINHAND = { name = "Everforged Warglaive", itemID = 222441, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223781 },
-        OFFHAND = { name = "Everforged Warglaive", itemID = 222441, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223784 },
-    },
-    
-    -- MONK - BREWMASTER (268)
-    [268] = {
-        HEAD = { name = "Mystic Heron's Hat", itemID = 237648, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        NECK = { name = "Amulet of Earthen Craftsmanship", itemID = 215136, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom" },
-        SHOULDER = { name = "Mystic Heron's Shoulderpads", itemID = 237646, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive", enchant = 223731 },
-        CHEST = { name = "Mystic Heron's Jerkin", itemID = 237651, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 223692 },
-        WRIST = { name = "Rune-Branded Armbands", itemID = 219334, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom", enchant = 223713 },
-        HANDS = { name = "Mystic Heron's Handwraps", itemID = 237649, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        WAIST = { name = "Rune-Branded Waistband", itemID = 219331, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        LEGS = { name = "Mystic Heron's Legguards", itemID = 237647, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 219911 },
-        FEET = { name = "Interloper's Reinforced Sandals", itemID = 243306, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Vers/Haste", enchant = 223656 },
-        FINGER1 = { name = "Ring of Earthen Craftsmanship", itemID = 215135, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom", enchant = 223680 },
-        FINGER2 = { name = "Ring of the Panoply", itemID = 246281, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Custom", enchant = 223680 },
-        TRINKET1 = { name = "Brand of Ceaseless Ire", itemID = 242401, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        TRINKET2 = { name = "Astral Antenna", itemID = 242395, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        MAINHAND = { name = "Charged Runestaff", itemID = 222453, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223781 },
-        OFFHAND = nil,
-    },
-    
-    -- MONK - MISTWEAVER (270)
-    [270] = {
-        HEAD = { name = "Mystic Heron's Hat", itemID = 237648, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        NECK = { name = "Amulet of Earthen Craftsmanship", itemID = 215136, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom" },
-        SHOULDER = { name = "Mystic Heron's Shoulderpads", itemID = 237646, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive", enchant = 223731 },
-        CHEST = { name = "Mystic Heron's Jerkin", itemID = 237651, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 223692 },
-        WRIST = { name = "Rune-Branded Armbands", itemID = 219334, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom", enchant = 223713 },
-        HANDS = { name = "Mystic Heron's Handwraps", itemID = 237649, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        WAIST = { name = "Rune-Branded Waistband", itemID = 219331, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        LEGS = { name = "Mystic Heron's Legguards", itemID = 237647, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 219911 },
-        FEET = { name = "Interloper's Reinforced Sandals", itemID = 243306, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Vers/Haste", enchant = 223656 },
-        FINGER1 = { name = "Ring of Earthen Craftsmanship", itemID = 215135, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom", enchant = 223680 },
-        FINGER2 = { name = "Logic Gate: Alpha", itemID = 237567, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Custom", enchant = 223680 },
-        TRINKET1 = { name = "Araz's Ritual Forge", itemID = 242402, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        TRINKET2 = { name = "Creeping Coagulum", itemID = 219312, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        MAINHAND = { name = "Charged Runestaff", itemID = 222453, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223781 },
-        OFFHAND = nil,
-    },
-    
-    -- MAGE - ARCANE (62)
-    [62] = {
-        HEAD = { name = "Cowl of the Cryptic Illusionist", itemID = 237680, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        NECK = { name = "Amulet of Earthen Craftsmanship", itemID = 215136, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom" },
-        SHOULDER = { name = "Mantle of the Cryptic Illusionist", itemID = 237678, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive", enchant = 223731 },
-        CHEST = { name = "Robes of the Cryptic Illusionist", itemID = 237681, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 223692 },
-        WRIST = { name = "Weavercloth Wristwraps", itemID = 222424, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom", enchant = 223713 },
-        HANDS = { name = "Gloves of the Cryptic Illusionist", itemID = 237677, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        WAIST = { name = "Weavercloth Sash", itemID = 222420, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        LEGS = { name = "Trousers of the Cryptic Illusionist", itemID = 237679, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 219911 },
-        FEET = { name = "Interloper's Woven Slippers", itemID = 243308, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Vers/Haste", enchant = 223656 },
-        FINGER1 = { name = "Ring of Earthen Craftsmanship", itemID = 215135, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom", enchant = 223680 },
-        FINGER2 = { name = "Logic Gate: Alpha", itemID = 237567, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Custom", enchant = 223680 },
-        TRINKET1 = { name = "Araz's Ritual Forge", itemID = 242399, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        TRINKET2 = { name = "Screams of a Forgotten Sky", itemID = 242398, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        MAINHAND = { name = "Ergospheric Shiftstaff", itemID = 237730, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223781 },
-        OFFHAND = nil,
-    },
-    
-    -- HUNTER - MARKSMANSHIP (254)
-    [254] = {
-        HEAD = { name = "Deathstalker's Helmet", itemID = 237656, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        NECK = { name = "Amulet of Earthen Craftsmanship", itemID = 215136, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom" },
-        SHOULDER = { name = "Deathstalker's Shoulderguards", itemID = 237654, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive", enchant = 223731 },
-        CHEST = { name = "Deathstalker's Hauberk", itemID = 237657, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 223692 },
-        WRIST = { name = "Rune-Branded Bindings", itemID = 219334, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom", enchant = 223713 },
-        HANDS = { name = "Deathstalker's Gauntlets", itemID = 237653, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        WAIST = { name = "Rune-Branded Clasp", itemID = 219331, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        LEGS = { name = "Deathstalker's Leggings", itemID = 237655, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 219911 },
-        FEET = { name = "Interloper's Chainmail Sabatons", itemID = 243305, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Vers/Haste", enchant = 223656 },
-        FINGER1 = { name = "Ring of Earthen Craftsmanship", itemID = 215135, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom", enchant = 223680 },
-        FINGER2 = { name = "Logic Gate: Alpha", itemID = 237567, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Custom", enchant = 223680 },
-        TRINKET1 = { name = "Sigil of the Cosmic Hunt", itemID = 242397, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        TRINKET2 = { name = "Astral Antenna", itemID = 242395, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        MAINHAND = { name = "Charged Bow", itemID = 222454, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223781 },
-        OFFHAND = nil,
-    },
-    
-    -- HUNTER - SURVIVAL (255)
-    [255] = {
-        HEAD = { name = "Deathstalker's Helmet", itemID = 237656, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        NECK = { name = "Amulet of Earthen Craftsmanship", itemID = 215136, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom" },
-        SHOULDER = { name = "Deathstalker's Shoulderguards", itemID = 237654, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive", enchant = 223731 },
-        CHEST = { name = "Deathstalker's Hauberk", itemID = 237657, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 223692 },
-        WRIST = { name = "Rune-Branded Bindings", itemID = 219334, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom", enchant = 223713 },
-        HANDS = { name = "Deathstalker's Gauntlets", itemID = 237653, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        WAIST = { name = "Rune-Branded Clasp", itemID = 219331, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        LEGS = { name = "Deathstalker's Leggings", itemID = 237655, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 219911 },
-        FEET = { name = "Interloper's Chainmail Sabatons", itemID = 243305, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Vers/Haste", enchant = 223656 },
-        FINGER1 = { name = "Ring of Earthen Craftsmanship", itemID = 215135, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom", enchant = 223680 },
-        FINGER2 = { name = "Signet of the False Accuser", itemID = 178824, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Custom", enchant = 223680 },
-        TRINKET1 = { name = "Sigil of the Cosmic Hunt", itemID = 242397, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        TRINKET2 = { name = "Cursed Stone Idol", itemID = 246344, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        MAINHAND = { name = "Charged Halberd", itemID = 222455, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223781 },
-        OFFHAND = nil,
-    },
-    
-    -- PALADIN - HOLY (65)
-    [65] = {
-        HEAD = { name = "Oathbinder's Faceguard", itemID = 237712, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        NECK = { name = "Amulet of Earthen Craftsmanship", itemID = 215136, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom" },
-        SHOULDER = { name = "Oathbinder's Spaulders", itemID = 237710, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive", enchant = 223731 },
-        CHEST = { name = "Oathbinder's Chestguard", itemID = 237715, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 223692 },
-        WRIST = { name = "Everforged Vambraces", itemID = 222435, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom", enchant = 223713 },
-        HANDS = { name = "Oathbinder's Gauntlets", itemID = 237713, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        WAIST = { name = "Everforged Greatbelt", itemID = 222431, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        LEGS = { name = "Oathbinder's Legguards", itemID = 237711, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 219911 },
-        FEET = { name = "Interloper's Plated Sabatons", itemID = 243307, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Vers/Haste", enchant = 223656 },
-        FINGER1 = { name = "Ring of Earthen Craftsmanship", itemID = 215135, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom", enchant = 223680 },
-        FINGER2 = { name = "Logic Gate: Alpha", itemID = 237567, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Custom", enchant = 223680 },
-        TRINKET1 = { name = "Araz's Ritual Forge", itemID = 242402, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        TRINKET2 = { name = "Creeping Coagulum", itemID = 219312, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        MAINHAND = { name = "Everforged Longsword", itemID = 222440, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223781 },
-        OFFHAND = { name = "Charged Defender", itemID = 222446, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223784 },
-    },
-    
-    -- PALADIN - PROTECTION (66)
-    [66] = {
-        HEAD = { name = "Oathbinder's Faceguard", itemID = 237712, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        NECK = { name = "Amulet of Earthen Craftsmanship", itemID = 215136, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom" },
-        SHOULDER = { name = "Oathbinder's Spaulders", itemID = 237710, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive", enchant = 223731 },
-        CHEST = { name = "Oathbinder's Chestguard", itemID = 237715, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 223692 },
-        WRIST = { name = "Everforged Vambraces", itemID = 222435, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom", enchant = 223713 },
-        HANDS = { name = "Oathbinder's Gauntlets", itemID = 237713, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        WAIST = { name = "Everforged Greatbelt", itemID = 222431, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        LEGS = { name = "Oathbinder's Legguards", itemID = 237711, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 219911 },
-        FEET = { name = "Interloper's Plated Sabatons", itemID = 243307, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Vers/Haste", enchant = 223656 },
-        FINGER1 = { name = "Ring of Earthen Craftsmanship", itemID = 215135, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom", enchant = 223680 },
-        FINGER2 = { name = "High Nerubian Signet", itemID = 221141, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Custom", enchant = 223680 },
-        TRINKET1 = { name = "Brand of Ceaseless Ire", itemID = 242401, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        TRINKET2 = { name = "Astral Antenna", itemID = 242395, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        MAINHAND = { name = "Everforged Longsword", itemID = 222440, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223781 },
-        OFFHAND = { name = "Charged Defender", itemID = 222446, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223784 },
-    },
-    
-    -- PRIEST - DISCIPLINE (256)
-    [256] = {
-        HEAD = { name = "Void-Preacher's Hood", itemID = 237704, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        NECK = { name = "Amulet of Earthen Craftsmanship", itemID = 215136, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom" },
-        SHOULDER = { name = "Void-Preacher's Mantle", itemID = 237702, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive", enchant = 223731 },
-        CHEST = { name = "Void-Preacher's Vestments", itemID = 237707, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 223692 },
-        WRIST = { name = "Weavercloth Wristwraps", itemID = 222424, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom", enchant = 223713 },
-        HANDS = { name = "Void-Preacher's Gloves", itemID = 237705, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        WAIST = { name = "Weavercloth Sash", itemID = 222420, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        LEGS = { name = "Void-Preacher's Trousers", itemID = 237703, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 219911 },
-        FEET = { name = "Interloper's Woven Slippers", itemID = 243308, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Vers/Haste", enchant = 223656 },
-        FINGER1 = { name = "Ring of Earthen Craftsmanship", itemID = 215135, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom", enchant = 223680 },
-        FINGER2 = { name = "Logic Gate: Alpha", itemID = 237567, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Custom", enchant = 223680 },
-        TRINKET1 = { name = "Araz's Ritual Forge", itemID = 242402, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        TRINKET2 = { name = "Creeping Coagulum", itemID = 219312, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        MAINHAND = { name = "Ergospheric Shiftstaff", itemID = 237730, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223781 },
-        OFFHAND = nil,
-    },
-    
-    -- PRIEST - HOLY (257)
-    [257] = {
-        HEAD = { name = "Void-Preacher's Hood", itemID = 237704, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        NECK = { name = "Amulet of Earthen Craftsmanship", itemID = 215136, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom" },
-        SHOULDER = { name = "Void-Preacher's Mantle", itemID = 237702, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive", enchant = 223731 },
-        CHEST = { name = "Void-Preacher's Vestments", itemID = 237707, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 223692 },
-        WRIST = { name = "Weavercloth Wristwraps", itemID = 222424, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom", enchant = 223713 },
-        HANDS = { name = "Void-Preacher's Gloves", itemID = 237705, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        WAIST = { name = "Weavercloth Sash", itemID = 222420, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        LEGS = { name = "Void-Preacher's Trousers", itemID = 237703, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 219911 },
-        FEET = { name = "Interloper's Woven Slippers", itemID = 243308, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Vers/Haste", enchant = 223656 },
-        FINGER1 = { name = "Ring of Earthen Craftsmanship", itemID = 215135, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom", enchant = 223680 },
-        FINGER2 = { name = "Logic Gate: Alpha", itemID = 237567, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Custom", enchant = 223680 },
-        TRINKET1 = { name = "Araz's Ritual Forge", itemID = 242402, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        TRINKET2 = { name = "Creeping Coagulum", itemID = 219312, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        MAINHAND = { name = "Ergospheric Shiftstaff", itemID = 237730, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223781 },
-        OFFHAND = nil,
-    },
-    
-    -- DRUID - FERAL (103)
-    [103] = {
-        HEAD = { name = "Arboreal Cultivator's Mask", itemID = 237640, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        NECK = { name = "Amulet of Earthen Craftsmanship", itemID = 215136, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom" },
-        SHOULDER = { name = "Arboreal Cultivator's Mantle", itemID = 237638, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive", enchant = 223731 },
-        CHEST = { name = "Arboreal Cultivator's Tunic", itemID = 237643, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 223692 },
-        WRIST = { name = "Rune-Branded Armbands", itemID = 219334, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom", enchant = 223713 },
-        HANDS = { name = "Arboreal Cultivator's Gloves", itemID = 237641, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        WAIST = { name = "Rune-Branded Waistband", itemID = 219331, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        LEGS = { name = "Arboreal Cultivator's Leggings", itemID = 237639, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 219911 },
-        FEET = { name = "Interloper's Reinforced Sandals", itemID = 243306, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Vers/Haste", enchant = 223656 },
-        FINGER1 = { name = "Ring of Earthen Craftsmanship", itemID = 215135, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom", enchant = 223680 },
-        FINGER2 = { name = "Signet of the False Accuser", itemID = 178824, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Custom", enchant = 223680 },
-        TRINKET1 = { name = "Sigil of the Cosmic Hunt", itemID = 242397, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        TRINKET2 = { name = "Astral Antenna", itemID = 242395, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        MAINHAND = { name = "Charged Runestaff", itemID = 222453, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223781 },
-        OFFHAND = nil,
-    },
-    
-    -- DRUID - GUARDIAN (104)
-    [104] = {
-        HEAD = { name = "Arboreal Cultivator's Mask", itemID = 237640, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        NECK = { name = "Amulet of Earthen Craftsmanship", itemID = 215136, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom" },
-        SHOULDER = { name = "Arboreal Cultivator's Mantle", itemID = 237638, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive", enchant = 223731 },
-        CHEST = { name = "Arboreal Cultivator's Tunic", itemID = 237643, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 223692 },
-        WRIST = { name = "Rune-Branded Armbands", itemID = 219334, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom", enchant = 223713 },
-        HANDS = { name = "Arboreal Cultivator's Gloves", itemID = 237641, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        WAIST = { name = "Rune-Branded Waistband", itemID = 219331, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        LEGS = { name = "Arboreal Cultivator's Leggings", itemID = 237639, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 219911 },
-        FEET = { name = "Interloper's Reinforced Sandals", itemID = 243306, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Vers/Haste", enchant = 223656 },
-        FINGER1 = { name = "Ring of Earthen Craftsmanship", itemID = 215135, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom", enchant = 223680 },
-        FINGER2 = { name = "Ring of the Panoply", itemID = 246281, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Custom", enchant = 223680 },
-        TRINKET1 = { name = "Brand of Ceaseless Ire", itemID = 242401, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        TRINKET2 = { name = "Astral Antenna", itemID = 242395, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        MAINHAND = { name = "Charged Runestaff", itemID = 222453, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223781 },
-        OFFHAND = nil,
-    },
-    
-    -- DRUID - RESTORATION (105)
-    [105] = {
-        HEAD = { name = "Arboreal Cultivator's Mask", itemID = 237640, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        NECK = { name = "Amulet of Earthen Craftsmanship", itemID = 215136, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom" },
-        SHOULDER = { name = "Arboreal Cultivator's Mantle", itemID = 237638, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive", enchant = 223731 },
-        CHEST = { name = "Arboreal Cultivator's Tunic", itemID = 237643, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 223692 },
-        WRIST = { name = "Rune-Branded Armbands", itemID = 219334, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom", enchant = 223713 },
-        HANDS = { name = "Arboreal Cultivator's Gloves", itemID = 237641, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        WAIST = { name = "Rune-Branded Waistband", itemID = 219331, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        LEGS = { name = "Arboreal Cultivator's Leggings", itemID = 237639, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 219911 },
-        FEET = { name = "Interloper's Reinforced Sandals", itemID = 243306, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Vers/Haste", enchant = 223656 },
-        FINGER1 = { name = "Ring of Earthen Craftsmanship", itemID = 215135, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom", enchant = 223680 },
-        FINGER2 = { name = "Logic Gate: Alpha", itemID = 237567, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Custom", enchant = 223680 },
-        TRINKET1 = { name = "Araz's Ritual Forge", itemID = 242402, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        TRINKET2 = { name = "Creeping Coagulum", itemID = 219312, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        MAINHAND = { name = "Charged Runestaff", itemID = 222453, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223781 },
-        OFFHAND = nil,
-    },
-    
-    -- SHAMAN - ELEMENTAL (262)
-    [262] = {
-        HEAD = { name = "Farseer's Mask", itemID = 237664, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        NECK = { name = "Amulet of Earthen Craftsmanship", itemID = 215136, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom" },
-        SHOULDER = { name = "Farseer's Shoulderpads", itemID = 237662, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive", enchant = 223731 },
-        CHEST = { name = "Farseer's Chainmail", itemID = 237665, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 223692 },
-        WRIST = { name = "Rune-Branded Bindings", itemID = 219334, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom", enchant = 223713 },
-        HANDS = { name = "Farseer's Grips", itemID = 237661, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        WAIST = { name = "Rune-Branded Clasp", itemID = 219331, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        LEGS = { name = "Farseer's Kilt", itemID = 237663, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 219911 },
-        FEET = { name = "Interloper's Chainmail Sabatons", itemID = 243305, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Vers/Haste", enchant = 223656 },
-        FINGER1 = { name = "Ring of Earthen Craftsmanship", itemID = 215135, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom", enchant = 223680 },
-        FINGER2 = { name = "Logic Gate: Alpha", itemID = 237567, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Custom", enchant = 223680 },
-        TRINKET1 = { name = "Araz's Ritual Forge", itemID = 242399, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        TRINKET2 = { name = "Screams of a Forgotten Sky", itemID = 242398, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        MAINHAND = { name = "Everforged Longsword", itemID = 222440, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223781 },
-        OFFHAND = { name = "Charged Defender", itemID = 222446, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223784 },
-    },
-    
-    -- SHAMAN - ENHANCEMENT (263)
-    [263] = {
-        HEAD = { name = "Farseer's Mask", itemID = 237664, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        NECK = { name = "Amulet of Earthen Craftsmanship", itemID = 215136, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom" },
-        SHOULDER = { name = "Farseer's Shoulderpads", itemID = 237662, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive", enchant = 223731 },
-        CHEST = { name = "Farseer's Chainmail", itemID = 237665, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 223692 },
-        WRIST = { name = "Rune-Branded Bindings", itemID = 219334, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom", enchant = 223713 },
-        HANDS = { name = "Farseer's Grips", itemID = 237661, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        WAIST = { name = "Rune-Branded Clasp", itemID = 219331, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        LEGS = { name = "Farseer's Kilt", itemID = 237663, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 219911 },
-        FEET = { name = "Interloper's Chainmail Sabatons", itemID = 243305, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Vers/Haste", enchant = 223656 },
-        FINGER1 = { name = "Ring of Earthen Craftsmanship", itemID = 215135, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom", enchant = 223680 },
-        FINGER2 = { name = "Signet of the False Accuser", itemID = 178824, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Custom", enchant = 223680 },
-        TRINKET1 = { name = "Sigil of the Cosmic Hunt", itemID = 242397, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        TRINKET2 = { name = "Astral Antenna", itemID = 242395, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        MAINHAND = { name = "Everforged Mace", itemID = 222444, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223781 },
-        OFFHAND = { name = "Everforged Mace", itemID = 222444, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223784 },
-    },
-    
-    -- SHAMAN - RESTORATION (264)
-    [264] = {
-        HEAD = { name = "Farseer's Mask", itemID = 237664, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        NECK = { name = "Amulet of Earthen Craftsmanship", itemID = 215136, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom" },
-        SHOULDER = { name = "Farseer's Shoulderpads", itemID = 237662, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive", enchant = 223731 },
-        CHEST = { name = "Farseer's Chainmail", itemID = 237665, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 223692 },
-        WRIST = { name = "Rune-Branded Bindings", itemID = 219334, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom", enchant = 223713 },
-        HANDS = { name = "Farseer's Grips", itemID = 237661, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        WAIST = { name = "Rune-Branded Clasp", itemID = 219331, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        LEGS = { name = "Farseer's Kilt", itemID = 237663, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 219911 },
-        FEET = { name = "Interloper's Chainmail Sabatons", itemID = 243305, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Vers/Haste", enchant = 223656 },
-        FINGER1 = { name = "Ring of Earthen Craftsmanship", itemID = 215135, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom", enchant = 223680 },
-        FINGER2 = { name = "Logic Gate: Alpha", itemID = 237567, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Custom", enchant = 223680 },
-        TRINKET1 = { name = "Araz's Ritual Forge", itemID = 242402, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        TRINKET2 = { name = "Creeping Coagulum", itemID = 219312, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        MAINHAND = { name = "Everforged Longsword", itemID = 222440, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223781 },
-        OFFHAND = { name = "Charged Defender", itemID = 222446, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223784 },
-    },
-    
-    -- WARLOCK - AFFLICTION (265)
-    [265] = {
-        HEAD = { name = "Sinister Savant's Gaze", itemID = 237688, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        NECK = { name = "Amulet of Earthen Craftsmanship", itemID = 215136, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom" },
-        SHOULDER = { name = "Sinister Savant's Mantle", itemID = 237686, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive", enchant = 223731 },
-        CHEST = { name = "Sinister Savant's Vestments", itemID = 237691, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 223692 },
-        WRIST = { name = "Weavercloth Wristwraps", itemID = 222424, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom", enchant = 223713 },
-        HANDS = { name = "Sinister Savant's Handwraps", itemID = 237687, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        WAIST = { name = "Weavercloth Sash", itemID = 222420, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        LEGS = { name = "Sinister Savant's Breeches", itemID = 237689, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 219911 },
-        FEET = { name = "Interloper's Woven Slippers", itemID = 243308, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Vers/Haste", enchant = 223656 },
-        FINGER1 = { name = "Ring of Earthen Craftsmanship", itemID = 215135, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom", enchant = 223680 },
-        FINGER2 = { name = "Logic Gate: Alpha", itemID = 237567, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Custom", enchant = 223680 },
-        TRINKET1 = { name = "Araz's Ritual Forge", itemID = 242399, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        TRINKET2 = { name = "Screams of a Forgotten Sky", itemID = 242398, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        MAINHAND = { name = "Ergospheric Shiftstaff", itemID = 237730, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223781 },
-        OFFHAND = nil,
-    },
-    
-    -- WARLOCK - DEMONOLOGY (266)
-    [266] = {
-        HEAD = { name = "Sinister Savant's Gaze", itemID = 237688, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        NECK = { name = "Amulet of Earthen Craftsmanship", itemID = 215136, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom" },
-        SHOULDER = { name = "Sinister Savant's Mantle", itemID = 237686, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive", enchant = 223731 },
-        CHEST = { name = "Sinister Savant's Vestments", itemID = 237691, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 223692 },
-        WRIST = { name = "Weavercloth Wristwraps", itemID = 222424, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom", enchant = 223713 },
-        HANDS = { name = "Sinister Savant's Handwraps", itemID = 237687, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        WAIST = { name = "Weavercloth Sash", itemID = 222420, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        LEGS = { name = "Sinister Savant's Breeches", itemID = 237689, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 219911 },
-        FEET = { name = "Interloper's Woven Slippers", itemID = 243308, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Vers/Haste", enchant = 223656 },
-        FINGER1 = { name = "Ring of Earthen Craftsmanship", itemID = 215135, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom", enchant = 223680 },
-        FINGER2 = { name = "Logic Gate: Alpha", itemID = 237567, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Custom", enchant = 223680 },
-        TRINKET1 = { name = "Araz's Ritual Forge", itemID = 242399, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        TRINKET2 = { name = "Screams of a Forgotten Sky", itemID = 242398, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        MAINHAND = { name = "Ergospheric Shiftstaff", itemID = 237730, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223781 },
-        OFFHAND = nil,
-    },
-    
-    -- WARLOCK - DESTRUCTION (267)
-    [267] = {
-        HEAD = { name = "Sinister Savant's Gaze", itemID = 237688, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        NECK = { name = "Amulet of Earthen Craftsmanship", itemID = 215136, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom" },
-        SHOULDER = { name = "Sinister Savant's Mantle", itemID = 237686, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive", enchant = 223731 },
-        CHEST = { name = "Sinister Savant's Vestments", itemID = 237691, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 223692 },
-        WRIST = { name = "Weavercloth Wristwraps", itemID = 222424, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom", enchant = 223713 },
-        HANDS = { name = "Sinister Savant's Handwraps", itemID = 237687, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        WAIST = { name = "Weavercloth Sash", itemID = 222420, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        LEGS = { name = "Sinister Savant's Breeches", itemID = 237689, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 219911 },
-        FEET = { name = "Interloper's Woven Slippers", itemID = 243308, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Vers/Haste", enchant = 223656 },
-        FINGER1 = { name = "Ring of Earthen Craftsmanship", itemID = 215135, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom", enchant = 223680 },
-        FINGER2 = { name = "Signet of Collapsing Stars", itemID = 185813, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Custom", enchant = 223680 },
-        TRINKET1 = { name = "Araz's Ritual Forge", itemID = 242399, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        TRINKET2 = { name = "Screams of a Forgotten Sky", itemID = 242398, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        MAINHAND = { name = "Ergospheric Shiftstaff", itemID = 237730, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223781 },
-        OFFHAND = nil,
-    },
-    
-    -- EVOKER - DEVASTATION (1467)
-    [1467] = {
-        HEAD = { name = "Scalecommander's Helmet", itemID = 237720, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        NECK = { name = "Amulet of Earthen Craftsmanship", itemID = 215136, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom" },
-        SHOULDER = { name = "Scalecommander's Epaulets", itemID = 237718, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive", enchant = 223731 },
-        CHEST = { name = "Scalecommander's Chainmail", itemID = 237723, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 223692 },
-        WRIST = { name = "Rune-Branded Bindings", itemID = 219334, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom", enchant = 223713 },
-        HANDS = { name = "Scalecommander's Gloves", itemID = 237721, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        WAIST = { name = "Rune-Branded Clasp", itemID = 219331, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        LEGS = { name = "Scalecommander's Tassets", itemID = 237719, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 219911 },
-        FEET = { name = "Interloper's Chainmail Sabatons", itemID = 243305, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Vers/Haste", enchant = 223656 },
-        FINGER1 = { name = "Ring of Earthen Craftsmanship", itemID = 215135, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom", enchant = 223680 },
-        FINGER2 = { name = "Logic Gate: Alpha", itemID = 237567, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Custom", enchant = 223680 },
-        TRINKET1 = { name = "Araz's Ritual Forge", itemID = 242399, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        TRINKET2 = { name = "Screams of a Forgotten Sky", itemID = 242398, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        MAINHAND = { name = "Charged Runestaff", itemID = 222453, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223781 },
-        OFFHAND = nil,
-    },
-    
-    -- EVOKER - PRESERVATION (1468)
-    [1468] = {
-        HEAD = { name = "Scalecommander's Helmet", itemID = 237720, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        NECK = { name = "Amulet of Earthen Craftsmanship", itemID = 215136, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom" },
-        SHOULDER = { name = "Scalecommander's Epaulets", itemID = 237718, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive", enchant = 223731 },
-        CHEST = { name = "Scalecommander's Chainmail", itemID = 237723, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 223692 },
-        WRIST = { name = "Rune-Branded Bindings", itemID = 219334, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom", enchant = 223713 },
-        HANDS = { name = "Scalecommander's Gloves", itemID = 237721, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        WAIST = { name = "Rune-Branded Clasp", itemID = 219331, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        LEGS = { name = "Scalecommander's Tassets", itemID = 237719, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 219911 },
-        FEET = { name = "Interloper's Chainmail Sabatons", itemID = 243305, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Vers/Haste", enchant = 223656 },
-        FINGER1 = { name = "Ring of Earthen Craftsmanship", itemID = 215135, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom", enchant = 223680 },
-        FINGER2 = { name = "Logic Gate: Alpha", itemID = 237567, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Custom", enchant = 223680 },
-        TRINKET1 = { name = "Araz's Ritual Forge", itemID = 242402, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        TRINKET2 = { name = "Creeping Coagulum", itemID = 219312, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        MAINHAND = { name = "Charged Runestaff", itemID = 222453, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223781 },
-        OFFHAND = nil,
-    },
-    
-    -- EVOKER - AUGMENTATION (1473)
-    [1473] = {
-        HEAD = { name = "Scalecommander's Helmet", itemID = 237720, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        NECK = { name = "Amulet of Earthen Craftsmanship", itemID = 215136, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom" },
-        SHOULDER = { name = "Scalecommander's Epaulets", itemID = 237718, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive", enchant = 223731 },
-        CHEST = { name = "Scalecommander's Chainmail", itemID = 237723, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 223692 },
-        WRIST = { name = "Rune-Branded Bindings", itemID = 219334, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom", enchant = 223713 },
-        HANDS = { name = "Scalecommander's Gloves", itemID = 237721, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier" },
-        WAIST = { name = "Rune-Branded Clasp", itemID = 219331, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        LEGS = { name = "Scalecommander's Tassets", itemID = 237719, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Tier", enchant = 219911 },
-        FEET = { name = "Interloper's Chainmail Sabatons", itemID = 243305, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Vers/Haste", enchant = 223656 },
-        FINGER1 = { name = "Ring of Earthen Craftsmanship", itemID = 215135, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom", enchant = 223680 },
-        FINGER2 = { name = "Logic Gate: Alpha", itemID = 237567, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Custom", enchant = 223680 },
-        TRINKET1 = { name = "Araz's Ritual Forge", itemID = 242399, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        TRINKET2 = { name = "Astral Antenna", itemID = 242395, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Proc" },
-        MAINHAND = { name = "Charged Runestaff", itemID = 222453, source = "CRAFTED", sourceDetail = "Crafting", stats = "Weapon", enchant = 223781 },
-        OFFHAND = nil,
-    },
-}
+-- Empty fallback — all real data comes from PeaversBestInSlotData
+KDT.BIS_DATA = {}
 
 -- =============================================================================
 -- DATA ACCESS FUNCTIONS
 -- =============================================================================
 
-function KDT:GetBisForSpec(specID)
-    if KDT.BIS_IMPORTED and KDT.BIS_IMPORTED[specID] and KDT.BIS_IMPORTED[specID].slots then
-        local result = {}
-        for slot, data in pairs(KDT.BIS_IMPORTED[specID].slots) do
-            result[slot] = { name = data.name, itemID = data.id, source = data.source, sourceDetail = data.detail, stats = data.stats or "", enchant = data.enchant, gems = data.gems }
-        end
-        return result
-    end
-    if KDT.BIS_DATA[specID] then return KDT.BIS_DATA[specID] end
-    return KDT:GetDefaultBisData()
-end
-
 function KDT:GetDefaultBisData()
-    return {
-        HEAD = { name = "Use /kdt import", itemID = 0, source = "UNKNOWN", sourceDetail = "Import data", stats = "" },
-        NECK = { name = "Chrysalis of Sundered Souls", itemID = 237568, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Universal" },
-        SHOULDER = { name = "Use /kdt import", itemID = 0, source = "UNKNOWN", sourceDetail = "Import data", stats = "" },
-        BACK = { name = "Reshii Wraps", itemID = 235499, source = "RAID", sourceDetail = "Artifact Cloak", stats = "Adaptive" },
-        CHEST = { name = "Use /kdt import", itemID = 0, source = "UNKNOWN", sourceDetail = "Import data", stats = "" },
-        WRIST = { name = "Rune-Branded Armbands", itemID = 219334, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        HANDS = { name = "Right-click to edit", itemID = 0, source = "UNKNOWN", sourceDetail = "", stats = "" },
-        WAIST = { name = "Rune-Branded Waistband", itemID = 219331, source = "CRAFTED", sourceDetail = "Crafting", stats = "Custom" },
-        LEGS = { name = "Right-click to edit", itemID = 0, source = "UNKNOWN", sourceDetail = "", stats = "" },
-        FEET = { name = "Right-click to edit", itemID = 0, source = "UNKNOWN", sourceDetail = "", stats = "" },
-        FINGER1 = { name = "Ring of Earthen Craftsmanship", itemID = 215135, source = "CRAFTED", sourceDetail = "Jewelcrafting", stats = "Custom" },
-        FINGER2 = { name = "Right-click to edit", itemID = 0, source = "UNKNOWN", sourceDetail = "", stats = "" },
-        TRINKET1 = { name = "Sigil of the Cosmic Hunt", itemID = 242397, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Universal" },
-        TRINKET2 = { name = "Astral Antenna", itemID = 242395, source = "RAID", sourceDetail = "Manaforge Omega", stats = "Universal" },
-        MAINHAND = { name = "Right-click to edit", itemID = 0, source = "UNKNOWN", sourceDetail = "", stats = "" },
-        OFFHAND = { name = "Right-click to edit", itemID = 0, source = "UNKNOWN", sourceDetail = "", stats = "" },
-    }
+    local data = {}
+    for _, slot in ipairs(KDT.SLOT_ORDER) do
+        data[slot] = {
+            name = "Install PeaversBestInSlotData",
+            itemID = 0,
+            source = "UNKNOWN",
+            sourceDetail = "",
+        }
+    end
+    return data
 end
 
 function KDT:GetEnchantName(enchantID)
@@ -976,8 +434,7 @@ end
 function KDT:GetPlayerSpecID() 
     local spec = GetSpecialization()
     if not spec then return 0 end
-    local specID = GetSpecializationInfo(spec)
-    return specID or 0
+    return GetSpecializationInfo(spec) or 0
 end
 
 function KDT:GetArchonURL(specID, contentType)
@@ -992,5 +449,8 @@ end
 
 function KDT:HasBisDataForSpec(specID)
     local lookupSpecID = self:GetBaseSpecID(specID)
-    return KDT.BIS_DATA[lookupSpecID] ~= nil
+    if self:IsPeaversBisAvailable() then
+        return SPEC_TO_CLASS[lookupSpecID] ~= nil
+    end
+    return false
 end

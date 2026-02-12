@@ -1,0 +1,8 @@
+<Bindings>
+  <Binding name="CLICK KDT_RandomMountButton:LeftButton" header="KRYOSDUNGEONTOOL">
+  </Binding>
+  <Binding name="CLICK KDT_RepairMountButton:LeftButton">
+  </Binding>
+  <Binding name="CLICK KDT_AHMountButton:LeftButton">
+  </Binding>
+</Bindings>

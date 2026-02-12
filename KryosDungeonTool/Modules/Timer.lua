@@ -465,24 +465,46 @@ function KDT:UpdateExternalTimer()
     
     -- ==================== Affixes ====================
     -- Get affixes from C_ChallengeMode API (WoW 12.0)
+    -- TWW Affix System:
+    --   Level 4+: Xal'atath's Bargain (one of several variants)
+    --   Level 7+: Tyrannical or Fortified
+    --   Level 10+: Both Tyrannical and Fortified
+    --   Level 12+: Xal'atath's Guile replaces Bargain
     local affixText = ""
     if inMythicPlus or (state.active and state.level > 0) then
         local affixes = C_MythicPlus.GetCurrentAffixes()
         if affixes and #affixes > 0 then
             local affixNames = {}
-            for i, affix in ipairs(affixes) do
-                local affixInfo = C_ChallengeMode.GetAffixInfo(affix.id)
-                if affixInfo and affixInfo.name then
-                    table.insert(affixNames, affixInfo.name)
+            for _, affix in ipairs(affixes) do
+                -- WoW 12.0: GetAffixInfo returns name, description, filedataid (multiple values, NOT a table)
+                local name = C_ChallengeMode.GetAffixInfo(affix.id)
+                if name and name ~= "" then
+                    table.insert(affixNames, name)
                 end
             end
             affixText = table.concat(affixNames, " / ")
         end
     end
     
-    -- Fallback to placeholder if no affixes
+    -- Fallback: build affix text based on key level
+    if affixText == "" and level and level > 0 then
+        local parts = {}
+        if level >= 10 then
+            table.insert(parts, "Fortified")
+            table.insert(parts, "Tyrannical")
+        elseif level >= 7 then
+            table.insert(parts, "Fortified / Tyrannical")
+        end
+        if level >= 12 then
+            table.insert(parts, "Xal'atath's Guile")
+        elseif level >= 4 then
+            table.insert(parts, "Xal'atath's Bargain")
+        end
+        affixText = table.concat(parts, " / ")
+    end
+    
     if affixText == "" then
-        affixText = "Fortified / Raging / Volcanic"
+        affixText = "No Affixes"
     end
     f.affixText:SetText(affixText)
     
@@ -605,7 +627,9 @@ function KDT:UpdateExternalTimer()
 
     
     -- ==================== Deaths ====================
-    local deathPenalty = deaths * 5  -- 5 seconds per death
+    -- TWW: Xal'atath's Guile (level 12+) = 15s per death, otherwise 5s
+    local deathPenaltyPerDeath = (level and level >= 12) and 15 or 5
+    local deathPenalty = deaths * deathPenaltyPerDeath
     f.deathText:SetText(string.format("Deaths: %d (-%ds)", deaths, deathPenalty))
     
     -- ==================== Trash Percentage ====================

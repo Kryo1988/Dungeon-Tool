@@ -458,6 +458,57 @@ SlashCmdList["KDT"] = function(msg)
             KDT.MainFrame:RefreshBis()
         end
         
+    elseif cmd == "key" then
+        local channel = args[2] and args[2]:upper() or "PRINT"
+        if channel == "PARTY" or channel == "GUILD" or channel == "SAY" then
+            KDT:AnnounceKeystone(channel)
+        else
+            KDT:AnnounceKeystone("PRINT")
+        end
+        
+    elseif cmd == "partykeys" then
+        KDT:RequestPartyKeys()
+    
+    elseif cmd == "tradelog" then
+        KDT:ShowTradeMailLog()
+    
+    elseif cmd == "visibility" then
+        if KDT.Visibility and KDT.Visibility.ToggleEditor then
+            KDT.Visibility:ToggleEditor()
+        else
+            KDT:Print("Visibility module not loaded.")
+        end
+    
+    elseif cmd == "cooldowns" then
+        if KDT.Aura and KDT.Aura.CooldownPanels and KDT.Aura.CooldownPanels.ToggleEditor then
+            KDT.Aura.CooldownPanels:ToggleEditor()
+        elseif KDT.Aura and KDT.Aura.CooldownPanels and KDT.Aura.CooldownPanels.OpenEditor then
+            KDT.Aura.CooldownPanels:OpenEditor()
+        else
+            KDT:Print("Cooldown Panels module not loaded. Check your addon installation.")
+        end
+    
+    elseif cmd == "datapanels" then
+        if KDT.DataPanel and KDT.DataPanel.List then
+            local list = KDT.DataPanel.List()
+            if list and #list > 0 then
+                KDT:Print("|cffffd200Data Panels:|r " .. #list .. " panel(s) active")
+                for _, p in ipairs(list) do
+                    local streamCount = p.order and #p.order or 0
+                    KDT:Print("  " .. (p.name or p.id) .. " - " .. streamCount .. " stream(s)")
+                end
+                KDT:Print("Right-click a panel to configure streams.")
+            else
+                KDT:Print("No Data Panels exist. Creating one...")
+                local panel = KDT.DataPanel.Create(nil, "Panel")
+                if panel then
+                    KDT:Print("Data Panel created. Right-click it to add streams.")
+                end
+            end
+        else
+            KDT:Print("DataPanel module not loaded.")
+        end
+    
     elseif cmd == "help" then
         KDT:Print("Commands:")
         KDT:Print("  /kdt - Open Group Check")
@@ -470,6 +521,13 @@ SlashCmdList["KDT"] = function(msg)
         KDT:Print("  /kdt cd - Start countdown")
         KDT:Print("  /kdt ready - Ready check")
         KDT:Print("  /kdt post - Post group to chat")
+        KDT:Print("  /kdt key - Show your keystone")
+        KDT:Print("  /kdt key party|guild|say - Announce keystone")
+        KDT:Print("  /kdt partykeys - Show party keystones")
+        KDT:Print("  /kdt tradelog - Show trade & mail log")
+        KDT:Print("  /kdt cooldowns - Open Cooldown Panels editor")
+        KDT:Print("  /kdt datapanels - Data Panels info")
+        KDT:Print("  /kdt visibility - Frame Visibility info")
         
     else
         KDT:Print("Unknown command. Type /kdt help")

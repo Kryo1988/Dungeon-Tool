@@ -75,7 +75,252 @@ local defaults = {
         autoAcceptInvites = false,
         autoAcceptQuest = false,
         autoTurnInQuest = false,
+        skipGossip = false,
+        skipCutscene = false,
+        -- Interface: Nameplates & Names
+        showClassColorsNameplates = false,
+        showGuildNames = false,
+        showPvPTitles = false,
+        -- Interface: UI Tweaks
+        hideTalkingHead = false,
+        hideDeathEffect = false,
+        hideZoneText = false,
+        hideRaidTools = false,
+        autoUnwrapCollections = false,
+        -- Interface: Resource Bars (class-specific)
+        hideRuneFrame = false,
+        hideComboPoints = false,
+        hideHolyPower = false,
+        hideHarmonyBar = false,
+        hideEssenceBar = false,
+        hideSoulShards = false,
+        hideTotemBar = false,
+        -- Economy: Auction House
+        ahCloseBags = false,
+        ahPersistFilter = false,
+        ahCurrentExpansion = false,
+        -- Economy: Mark Known on Merchant
+        markKnownTransmog = false,
+        markKnownRecipes = false,
+        markKnownToys = false,
+        markCollectedPets = false,
+        -- Economy: Gold Tracking
+        goldTrackingEnabled = false,
+        -- Economy: Extended Merchant
+        extMerchantEnabled = false,
+        minimapCollectorEnabled = false,
+        -- Social: Privacy & Blocking
+        blockDuels = false,
+        blockPetBattles = false,
+        blockPartyInvites = false,
+        -- Social: Auto Accept Invite (upgraded)
+        autoAcceptInviteGuildOnly = false,
+        autoAcceptInviteFriendOnly = false,
+        -- Social: Auto Accept Summon
+        autoAcceptSummon = false,
+        -- Social: Community Chat Privacy
+        communityChatPrivacy = false,
+        communityChatPrivacyMode = "always",  -- "always" or "session"
+        -- Social: Friends List Decor
+        friendsListDecor = false,
+        friendsListDecorLocation = true,
+        friendsListDecorHideOwnRealm = true,
+        -- General: Dialogs & Confirmations
+        deleteItemFillDialog = false,
+        confirmReplaceEnchant = false,
+        confirmSocketReplace = false,
+        confirmHighCostItem = false,
+        confirmPurchaseTokenItem = false,
+        confirmTimerRemovalTrade = false,
+        -- General: Utilities
+        autoDismount = false,
+        autoDismountFlying = false,
+        hideScreenshotStatus = false,
+        showTrainAllButton = false,
+        autoQuickLoot = false,
+        autoQuickLootWithShift = false,
+        -- Gameplay: Combat & Dungeon
+        autoAcceptResurrection = false,
+        autoAcceptResurrectionExcludeCombat = true,
+        autoAcceptResurrectionExcludeAfterlife = true,
+        autoReleasePvP = false,
+        autoReleasePvPDelay = 0,
+        autoCombatLog = false,
+        hideBossBanner = false,
+        -- Interface: Unit Frames
+        hideHitIndicatorPlayer = false,
+        hideHitIndicatorPet = false,
+        hideRestingGlow = false,
+        hidePartyFrameTitle = false,
+        hideMacroNames = false,
+        hideExtraActionArtwork = false,
+        hideMicroMenuNotification = false,
+        hideAzeriteToast = false,
+        hideQuickJoinToast = false,
+        -- Chat
+        chatEditBoxOnTop = false,
+        chatUseArrowKeys = false,
+        chatHideCombatLogTab = false,
+        chatMaxLines2000 = false,
+        chatUnclampFrame = false,
+        chatFadeEnabled = false,
+        chatFadeTimeVisible = 120,
+        chatFadeDuration = 10,
+        chatHideLearnUnlearn = false,
+        -- Gameplay: LFG Tweaks
+        lfgSortByRio = false,
+        lfgPersistSignUpNote = false,
+        lfgSkipSignUpDialog = false,
+        -- Phase 2: Chat Icons
+        chatItemIcons = false,
+        chatItemLevel = false,
+        chatItemLevelLocation = false,
+        -- Phase 2: Health Text
+        healthTextPlayer = "OFF",
+        healthTextTarget = "OFF",
+        healthTextBoss = "OFF",
+        -- Phase 2: Instance Difficulty Text
+        showInstanceDifficulty = false,
+        instanceDiffFontSize = 14,
+        instanceDiffUseColors = false,
+        instanceDiffColors = {
+            NM = { r = 0.20, g = 0.95, b = 0.20 },
+            HC = { r = 0.25, g = 0.55, b = 1.00 },
+            M  = { r = 0.80, g = 0.40, b = 1.00 },
+            MPLUS = { r = 0.80, g = 0.40, b = 1.00 },
+            LFR = { r = 1.00, g = 1.00, b = 1.00 },
+            TW  = { r = 1.00, g = 1.00, b = 1.00 },
+        },
+        -- Phase 2: Extended Merchant (20 items/page)
+        enableExtendedMerchant = false,
+        -- Phase 2: Mount Actions
+        randomMountUseAll = false,
+        randomMountSlowFallWhenFalling = false,
+        randomMountDracthyrVisageBeforeMount = false,
+        randomMountDruidNoShiftWhileMounted = false,
+        -- Phase 2: Tooltip Enhancements
+        tooltipClassColors = false,
+        tooltipShowGuildRank = false,
+        tooltipColorGuildName = false,
+        tooltipShowMythicScore = false,
+        tooltipMythicScoreModifier = "SHIFT",
+        tooltipShowTargetOfTarget = false,
+        tooltipShowMount = false,
+        tooltipShowSpec = false,
+        tooltipShowItemLevel = false,
+        tooltipShowSpellID = false,
+        tooltipShowSpellIcon = false,
+        tooltipShowItemID = false,
+        tooltipShowItemIcon = false,
+        tooltipShowNPCID = false,
+        tooltipShowCurrencyID = false,
+        tooltipHideInCombat = false,
+        tooltipHideHealthBar = false,
+        tooltipHideFaction = false,
+        tooltipHidePvP = false,
+        tooltipHideRightClick = false,
+        tooltipAnchorCursor = false,
+        tooltipScale = 1,
+        -- Phase 2: Bag Item Level
+        showBagItemLevel = false,
+        showBagUpgradeArrow = false,
+        -- Phase 2: Trade & Mail Log
+        enableTradeMailLog = false,
+        -- Phase 2: Action Bar Tweaks
+        actionBarShortenHotkeys = false,
+        actionBarRangeColoring = false,
+        -- Phase 3: GCD Bar
+        gcdBarEnabled = false,
+        gcdBarPosition = nil,  -- {point, relativePoint, x, y}
+        -- Phase 3: Loot Toast Filter
+        lootToastFilterEnabled = false,
+        -- Phase 3: Container Actions (auto-open containers)
+        containerActionsEnabled = false,
+        containerActionsPosition = nil,
+        containerActionsBlacklist = {},
+        -- Phase 3: Dungeon Journal Loot Spec
+        djLootSpecEnabled = false,
+        djLootSpecShowAll = false,
+        -- Phase 3: Frame Mover
+        frameMoverEnabled = false,
+        frameMoverRequireModifier = true,
+        frameMoverModifier = "SHIFT",  -- SHIFT, CTRL, ALT
+        frameMoverScaleEnabled = false,
+        frameMoverScaleModifier = "CTRL",
+        frameMoverPersistence = "reset",  -- close, lockout, reset
+        -- Phase 3: Food Reminder
+        foodReminderEnabled = false,
+        foodReminderSound = true,
+        foodReminderPosition = nil,
+        foodReminderFlask = true,
+        foodReminderFood = true,
+        foodReminderRune = false,       -- Off by default (not everyone uses runes)
+        foodReminderWeapon = false,     -- Off by default (not all specs use temp enchants)
+        foodReminderHealthPot = true,
+        foodReminderCombatPot = false,  -- Off by default (casual players may not use)
+        -- Phase 3: Chat History
+        chatHistoryEnabled = false,
+        chatHistoryMaxMessages = 500,
+        chatHistoryShowTimestamps = true,
+        -- Phase 3: Unit Frame Visibility
+        ufVisibilityEnabled = false,
+        ufVisibilityFadeInCombat = false,
+        ufVisibilityFadeOOC = false,
+        ufVisibilityFadeAlpha = 0.3,
+        -- Keystone Helper
+        keystoneAutoSlot = false,
+        keystoneShowDisplay = false,
+        visibilityRules = {},
+        visibilityFadeAmount = 100,
+        keystoneDepletionWarning = true,
+        keystoneDisplayPoint = nil,
+        keystoneDisplayRelPoint = nil,
+        keystoneDisplayX = 0,
+        keystoneDisplayY = 0,
     },
+    tradeMailLog = {},  -- Stored trade/mail history entries
+    goldTracker = {},  -- {["Name-Realm"] = {gold=12345, class="WARRIOR", lastSeen=time()}}
+    frameMoverPositions = {},  -- {[frameId] = {point, x, y, scale, enabled}}
+    chatHistoryData = {},  -- {[channelKey] = {{msg, sender, time}, ...}}
+    chatEnhancer = {
+        enabled = false,         -- Master toggle (requires /reload)
+        transparency = 18,       -- Background (0-100)
+        tabTransparency = 0,     -- Tab (0-100)
+        classColors = true,      -- Class-colored names in chat
+        clickableURLs = true,    -- Clickable URL links
+        shortenChannels = true,  -- Shorten channel names
+    },
+    editModeLayouts = {},  -- EditMode layout position data per layout
+    dataPanels = {},  -- DataPanel configurations
+    cooldownPanels = {  -- CooldownPanels configuration
+        version = 1,
+        panels = {},
+        order = {},
+        selectedPanel = nil,
+        defaults = {
+            layout = {
+                iconSize = 36,
+                spacing = 2,
+                direction = "RIGHT",
+                wrapCount = 0,
+                wrapDirection = "DOWN",
+                strata = "MEDIUM",
+            },
+            entry = {
+                alwaysShow = true,
+                showCooldown = true,
+                showCooldownText = true,
+                showCharges = false,
+                showStacks = false,
+                glowReady = false,
+                glowDuration = 0,
+            },
+        },
+    },
+    cooldownPanelsEditorPoint = "CENTER",
+    cooldownPanelsEditorX = 0,
+    cooldownPanelsEditorY = 0,
+    cooldownPanelsFilterClass = false,
 }
 
 -- Deep copy function
@@ -113,11 +358,34 @@ function KDT:InitDB()
         KryosDungeonToolDB = MergeDefaults(KryosDungeonToolDB, defaults)
     end
     self.DB = KryosDungeonToolDB
+    self.db = self.DB  -- Alias for ported EnhanceQoL modules
     
     -- Migration: Update default scale from 1 to 1.2 for existing users
     if self.DB.timer and self.DB.timer.scale == 1 and not self.DB.migratedScale then
         self.DB.timer.scale = 1.2
         self.DB.migratedScale = true
+    end
+    
+    -- Migration: customBis flat format -> per-mode format
+    -- Old: customBis[specID]["HEAD"] = {...}
+    -- New: customBis[specID]["overall"]["HEAD"] = {...}
+    if self.DB.customBis and not self.DB.migratedCustomBisPerMode then
+        for specID, specData in pairs(self.DB.customBis) do
+            if type(specData) == "table" then
+                -- Detect old format: slot keys like "HEAD", "NECK" exist at top level
+                local isOldFormat = specData["HEAD"] or specData["NECK"] or specData["CHEST"]
+                                    or specData["MAINHAND"] or specData["TRINKET1"]
+                if isOldFormat then
+                    -- Move all slot data into "custom" mode
+                    local slotData = {}
+                    for slot, data in pairs(specData) do
+                        slotData[slot] = data
+                    end
+                    self.DB.customBis[specID] = { custom = slotData }
+                end
+            end
+        end
+        self.DB.migratedCustomBisPerMode = true
     end
 end
 
@@ -266,7 +534,7 @@ function KDT:Print(msg)
 end
 
 -- Version
-KDT.version = "2.6.6"
+KDT.version = "2.7.7"
 
 -- Already alerted (for blacklist)
 KDT.alreadyAlerted = {}

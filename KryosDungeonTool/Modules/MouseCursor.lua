@@ -38,6 +38,8 @@ MC.defaults = {
     trailDensity = 0.005,
     trailScale = 1.0,
     trailMinMovement = 0.5,
+    trailOnlyInCombat = false,
+    trailPreset = "Medium",
     showOnlyInCombat = false,
     shiftAction = "None",
     ctrlAction = "None",
@@ -672,6 +674,18 @@ function MC:ApplySettings()
     if trackPower then
         self:UpdatePowerRing()
     end
+    
+    -- Update trail settings
+    if self:GetConfig("enableTrail") then
+        local presetName = self:GetConfig("trailPreset") or "Medium"
+        if MC._trailActive then
+            self:ApplyTrailPreset(presetName)
+        else
+            self:InitTrail()
+        end
+    else
+        self:StopTrail()
+    end
 end
 
 -- Setup UI (create frames)
@@ -701,6 +715,11 @@ function MC:SetupUI()
         
         self:ClearAllPoints()
         self:SetPoint("CENTER", UIParent, "BOTTOMLEFT", correctedX, correctedY)
+        
+        -- Update mouse trail if enabled
+        if MC._trailActive then
+            MC:UpdateTrail(elapsed, x, y, uiScale)
+        end
     end)
     
     -- Main Ring
@@ -793,6 +812,195 @@ function MC:SetupUI()
     KDT_MouseCursorFrame = f
 end
 
+---------------------------------------------------------------------------
+-- MOUSE TRAIL SYSTEM (ported from EnhanceQoL)
+---------------------------------------------------------------------------
+local TEX_TRAIL = "Interface\\Addons\\KryosDungeonTool\\Textures\\MouseTrail"
+
+-- Trail presets (matching original EnhanceQoL density levels)
+local trailPresets = {
+    [1] = { -- LOW
+        MaxActuationPoint = 1.0,
+        duration = 0.4,
+        Density = 0.025,
+        ElementCap = 20,
+    },
+    [2] = { -- MEDIUM
+        MaxActuationPoint = 0.7,
+        duration = 0.5,
+        Density = 0.02,
+        ElementCap = 40,
+    },
+    [3] = { -- HIGH
+        MaxActuationPoint = 0.5,
+        duration = 0.7,
+        Density = 0.012,
+        ElementCap = 80,
+    },
+    [4] = { -- ULTRA
+        MaxActuationPoint = 0.3,
+        duration = 0.7,
+        Density = 0.007,
+        ElementCap = 120,
+    },
+}
+
+-- Trail state
+MC._trailPool = {}
+MC._trailActiveCount = 0
+MC._trailTimer = 0
+MC._trailLastX = nil
+MC._trailLastY = nil
+MC._trailActive = false
+MC._trailCurrentPreset = nil
+
+-- Current trail parameters (set by preset)
+MC._trailMaxActSq = 0.49
+MC._trailDuration = 0.5
+MC._trailDensity = 0.02
+MC._trailElementCap = 40
+
+local function CreateTrailElement()
+    local tex = UIParent:CreateTexture(nil)
+    tex:SetTexture(TEX_TRAIL)
+    tex:SetBlendMode("ADD")
+    tex:SetSize(35, 35)
+    
+    local ag = tex:CreateAnimationGroup()
+    ag:SetScript("OnFinished", function(self)
+        local t = self:GetParent()
+        t:Hide()
+        MC._trailPool[#MC._trailPool + 1] = t
+        MC._trailActiveCount = MC._trailActiveCount - 1
+    end)
+    local fade = ag:CreateAnimation("Alpha")
+    fade:SetFromAlpha(1)
+    fade:SetToAlpha(0)
+    
+    tex.anim = ag
+    tex.fade = fade
+    
+    return tex
+end
+
+local function EnsureTrailPool()
+    local total = MC._trailActiveCount + #MC._trailPool
+    if total >= MC._trailElementCap then return end
+    for _ = 1, (MC._trailElementCap - total) do
+        local tex = CreateTrailElement()
+        tex:Hide()
+        MC._trailPool[#MC._trailPool + 1] = tex
+    end
+end
+
+local trailPresetNameToIndex = {
+    ["Low"] = 1, ["Medium"] = 2, ["High"] = 3, ["Ultra"] = 4,
+}
+
+function MC:ApplyTrailPreset(presetName)
+    local idx = trailPresetNameToIndex[presetName] or 2
+    local preset = trailPresets[idx]
+    if not preset then preset = trailPresets[2] end
+    
+    local maxAct = preset.MaxActuationPoint
+    MC._trailMaxActSq = maxAct * maxAct
+    MC._trailDuration = self:GetConfig("trailDuration") or preset.duration
+    MC._trailDensity = preset.Density
+    MC._trailElementCap = preset.ElementCap
+    MC._trailCurrentPreset = presetName
+    
+    EnsureTrailPool()
+end
+
+function MC:GetTrailColor()
+    local colorMode = self:GetConfig("trailColorMode") or "default"
+    if colorMode == "class" then
+        local _, class = UnitClass("player")
+        if class and GetClassColor then
+            local r, g, b = GetClassColor(class)
+            if r then return r, g, b, 1 end
+        end
+        return 1, 1, 1, 1
+    elseif colorMode == "custom" then
+        local c = self:GetConfig("trailCustomColor")
+        if c then return c.r or 1, c.g or 1, c.b or 1, 1 end
+    end
+    return 1, 1, 1, 1
+end
+
+function MC:UpdateTrail(elapsed, cursorX, cursorY, effectiveScale)
+    if not MC._trailActive then return end
+    
+    -- Check combat restriction
+    if self:GetConfig("trailOnlyInCombat") then
+        if not (UnitAffectingCombat and UnitAffectingCombat("player")) then return end
+    end
+    
+    -- Initialize first position
+    if MC._trailLastX == nil then
+        MC._trailLastX = cursorX
+        MC._trailLastY = cursorY
+        return
+    end
+    
+    MC._trailTimer = MC._trailTimer + elapsed
+    
+    local dx = cursorX - MC._trailLastX
+    local dy = cursorY - MC._trailLastY
+    local distSq = dx * dx + dy * dy
+    
+    if MC._trailTimer >= MC._trailDensity and distSq >= MC._trailMaxActSq then
+        MC._trailTimer = MC._trailTimer - MC._trailDensity
+        
+        if MC._trailActiveCount < MC._trailElementCap and #MC._trailPool > 0 then
+            local element = MC._trailPool[#MC._trailPool]
+            MC._trailPool[#MC._trailPool] = nil
+            MC._trailActiveCount = MC._trailActiveCount + 1
+            
+            element:ClearAllPoints()
+            element:SetPoint("CENTER", UIParent, "BOTTOMLEFT",
+                cursorX / effectiveScale, cursorY / effectiveScale)
+            
+            -- Apply scale
+            local trailScale = self:GetConfig("trailScale") or 1.0
+            element:SetSize(35 * trailScale, 35 * trailScale)
+            
+            -- Apply color
+            local r, g, b, a = self:GetTrailColor()
+            element:SetVertexColor(r, g, b, a)
+            
+            -- Apply duration
+            element.fade:SetDuration(MC._trailDuration)
+            element.anim:Stop()
+            element.anim:Play()
+            element:Show()
+        end
+    end
+    
+    MC._trailLastX = cursorX
+    MC._trailLastY = cursorY
+end
+
+function MC:InitTrail()
+    local presetName = self:GetConfig("trailPreset") or "Medium"
+    self:ApplyTrailPreset(presetName)
+    MC._trailLastX = nil
+    MC._trailLastY = nil
+    MC._trailTimer = 0
+    MC._trailActive = true
+    
+    -- Make sure the cursor frame exists and has OnUpdate
+    if not KDT_MouseCursorFrame then
+        self:SetupUI()
+    end
+end
+
+function MC:StopTrail()
+    MC._trailActive = false
+    -- Hide all active trail elements
+    -- (they'll fade out naturally via their animations)
+end
+
 -- Initialize module
 function MC:Initialize()
     self:InitConfig()
@@ -800,6 +1008,11 @@ function MC:Initialize()
     if self:GetConfig("enabled") then
         self:SetupUI()
         self:ApplySettings()
+        
+        -- Initialize trail if enabled
+        if self:GetConfig("enableTrail") then
+            self:InitTrail()
+        end
         
         -- Register events for combat visibility
         local eventFrame = CreateFrame("Frame")
@@ -841,5 +1054,15 @@ function MC:Initialize()
         end)
         
         MC.eventFrame = eventFrame
+    elseif self:GetConfig("enableTrail") then
+        -- Trail can work independently without the ring cursor
+        self:SetupUI()
+        self:InitTrail()
+        -- Hide cursor frame visuals but keep OnUpdate for trail
+        if KDT_MouseCursorFrame then
+            -- Hide all ring textures
+            if KDT_MouseCursorFrame.MainRing then KDT_MouseCursorFrame.MainRing:Hide() end
+            if KDT_MouseCursorFrame.Reticle then KDT_MouseCursorFrame.Reticle:Hide() end
+        end
     end
 end

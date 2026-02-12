@@ -99,28 +99,34 @@ local function CreateEditDialog()
     sourceLabel:SetText("Source:")
     sourceLabel:SetTextColor(0.7, 0.7, 0.7)
     
-    local sources = {"RAID", "MYTHIC_PLUS", "CRAFTED"}
+    local sources = {"RAID", "MYTHIC_PLUS", "CRAFTED", "DELVE", "WORLD", "PVP", "UNKNOWN"}
     local sourceButtons = {}
     editFrame.selectedSource = "RAID"
     
     local function UpdateSourceButtons()
         for _, b in ipairs(sourceButtons) do
+            local c = SOURCE_COLORS[b.source] or {0.5, 0.5, 0.5}
             if b.source == editFrame.selectedSource then
-                b:SetBackdropColor(0.2, 0.4, 0.6, 1)
-                b:SetBackdropBorderColor(0.3, 0.6, 1, 1)
+                b:SetBackdropColor(c[1]*0.4, c[2]*0.4, c[3]*0.4, 1)
+                b:SetBackdropBorderColor(c[1], c[2], c[3], 1)
+                b.text:SetTextColor(c[1], c[2], c[3])
             else
                 b:SetBackdropColor(0.15, 0.15, 0.18, 1)
                 b:SetBackdropBorderColor(0.3, 0.3, 0.35, 1)
+                b.text:SetTextColor(0.6, 0.6, 0.6)
             end
         end
     end
     editFrame.UpdateSourceButtons = UpdateSourceButtons
     
+    -- Row 1: Raid, M+, Crafted, Delve | Row 2: World, PvP, Unknown
     local btnX = 120
+    local btnRow = 0
     for i, src in ipairs(sources) do
+        if i == 5 then btnX = 120; btnRow = 1 end  -- new row after Delve
         local btn = CreateFrame("Button", nil, editFrame, "BackdropTemplate")
-        btn:SetSize(85, 22)
-        btn:SetPoint("TOPLEFT", btnX, yPos + 3)
+        btn:SetSize(70, 22)
+        btn:SetPoint("TOPLEFT", btnX, yPos + 3 - (btnRow * 26))
         btn:SetBackdrop({
             bgFile = "Interface\\Buttons\\WHITE8X8",
             edgeFile = "Interface\\Buttons\\WHITE8X8",
@@ -145,15 +151,20 @@ local function CreateEditDialog()
         end)
         btn:SetScript("OnLeave", function(self)
             if self.source ~= editFrame.selectedSource then
-                self:SetBackdropBorderColor(0.3, 0.3, 0.35, 1)
+                local c = SOURCE_COLORS[self.source] or {0.5, 0.5, 0.5}
+                if self.source == editFrame.selectedSource then
+                    self:SetBackdropBorderColor(c[1], c[2], c[3], 1)
+                else
+                    self:SetBackdropBorderColor(0.3, 0.3, 0.35, 1)
+                end
             end
         end)
         sourceButtons[i] = btn
-        btnX = btnX + 90
+        btnX = btnX + 75
     end
     editFrame.sourceButtons = sourceButtons
     
-    yPos = yPos - 35
+    yPos = yPos - 60  -- extra space for second row
     
     -- Source Detail
     local detailLabel = editFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -269,11 +280,16 @@ local function CreateEditDialog()
         -- Save to custom data
         KDT:SaveCustomBisSlot(specID, slot, itemData)
         
+        KDT:Print("|cFF00FF00[BiS] Saved custom item for slot " .. slot .. " (specID=" .. specID .. "): " .. itemData.name .. "|r")
+        
         editFrame.status:SetText("|cFF00FF00Saved!|r")
         
         -- Refresh BiS display
-        if KDT.mainFrame and KDT.mainFrame.RefreshBis then
-            KDT.mainFrame:RefreshBis()
+        if KDT.MainFrame and KDT.MainFrame.RefreshBis then
+            KDT.MainFrame._bisItemCacheRefreshed = false
+            KDT.MainFrame:RefreshBis()
+        else
+            KDT:Print("|cFFFF0000[BiS] WARNING: Cannot refresh - MainFrame or RefreshBis not found|r")
         end
     end)
     
@@ -307,8 +323,8 @@ local function CreateEditDialog()
             KDT:ResetCustomBisSlot(specID, slot)
             editFrame.status:SetText("|cFFFFFF00Slot reset to default|r")
             
-            if KDT.mainFrame and KDT.mainFrame.RefreshBis then
-                KDT.mainFrame:RefreshBis()
+            if KDT.MainFrame and KDT.MainFrame.RefreshBis then
+                KDT.MainFrame:RefreshBis()
             end
         end
     end)
@@ -363,16 +379,88 @@ function KDT:SetupBisTab(f)
     e.specInfo:SetText("Loading spec...")
     e.specInfo:SetTextColor(0.7, 0.7, 0.7)
     
-    -- Data source info
-    e.sourceInfo = c:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    e.sourceInfo:SetPoint("TOPRIGHT", c, "TOPRIGHT", -15, -15)
-    e.sourceInfo:SetText("Data: Archon.gg | Season 3")
-    e.sourceInfo:SetTextColor(0, 0.83, 1)
+    -- Mode selector buttons
+    e.modeButtons = {}
+    local modes = {
+        {key = "overall",  label = "Overall"},
+        {key = "raid",     label = "Raid"},
+        {key = "dungeon",  label = "M+"},
+        {key = "custom",   label = "Custom"},
+    }
+    
+    local modeBtnContainer = CreateFrame("Frame", nil, c)
+    modeBtnContainer:SetHeight(28)
+    modeBtnContainer:SetPoint("TOPLEFT", e.specInfo, "BOTTOMLEFT", 0, -8)
+    modeBtnContainer:SetPoint("RIGHT", c, "RIGHT", -10, 0)
+    e.modeBtnContainer = modeBtnContainer
+    
+    local function UpdateModeButtons()
+        for _, mb in ipairs(e.modeButtons) do
+            if mb.modeKey == KDT.bisMode then
+                mb:SetBackdropColor(0.8, 0.2, 0.2, 0.8)
+                mb:SetBackdropBorderColor(0.8, 0.2, 0.2, 1)
+                mb.text:SetTextColor(1, 1, 1)
+            else
+                mb:SetBackdropColor(0.12, 0.12, 0.14, 1)
+                mb:SetBackdropBorderColor(0.25, 0.25, 0.30, 1)
+                mb.text:SetTextColor(0.6, 0.6, 0.6)
+            end
+        end
+    end
+    e.UpdateModeButtons = UpdateModeButtons
+    
+    local btnX = 0
+    for i, modeInfo in ipairs(modes) do
+        local btn = CreateFrame("Button", nil, modeBtnContainer, "BackdropTemplate")
+        btn:SetSize(75, 24)
+        btn:SetPoint("LEFT", btnX, 0)
+        btn:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8X8",
+            edgeFile = "Interface\\Buttons\\WHITE8X8",
+            edgeSize = 1,
+        })
+        btn.modeKey = modeInfo.key
+        
+        btn.text = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        btn.text:SetPoint("CENTER", 0, 0)
+        btn.text:SetText(modeInfo.label)
+        
+        btn:SetScript("OnEnter", function(self)
+            if self.modeKey ~= KDT.bisMode then
+                self:SetBackdropColor(0.2, 0.2, 0.25, 1)
+                self:SetBackdropBorderColor(0.8, 0.2, 0.2, 0.6)
+            end
+        end)
+        btn:SetScript("OnLeave", function(self)
+            UpdateModeButtons()
+        end)
+        btn:SetScript("OnClick", function(self)
+            KDT.bisMode = self.modeKey
+            UpdateModeButtons()
+            if KDT.MainFrame and KDT.MainFrame.RefreshBis then
+                KDT.MainFrame:RefreshBis()
+            end
+        end)
+        
+        e.modeButtons[i] = btn
+        btnX = btnX + 79
+    end
+    
+    -- PeaversBestInSlotData status indicator
+    e.peaversStatus = c:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    e.peaversStatus:SetPoint("LEFT", modeBtnContainer, "LEFT", btnX + 10, 0)
+    if KDT:IsPeaversBisAvailable() then
+        e.peaversStatus:SetText("|cFF00FF00PeaversBiS active|r")
+    else
+        e.peaversStatus:SetText("|cFFFF8800PeaversBiS not found|r")
+    end
+    
+    UpdateModeButtons()
     
     -- Legend box (relative width)
     e.legendBox = CreateFrame("Frame", nil, c, "BackdropTemplate")
     e.legendBox:SetHeight(28)
-    e.legendBox:SetPoint("TOPLEFT", e.specInfo, "BOTTOMLEFT", 0, -10)
+    e.legendBox:SetPoint("TOPLEFT", modeBtnContainer, "BOTTOMLEFT", 0, -8)
     e.legendBox:SetPoint("RIGHT", c, "RIGHT", -10, 0)
     e.legendBox:SetBackdrop({bgFile = "Interface\\Buttons\\WHITE8X8"})
     e.legendBox:SetBackdropColor(0.1, 0.1, 0.12, 0.8)
@@ -383,6 +471,10 @@ function KDT:SetupBisTab(f)
         {source = "RAID", text = "Raid"},
         {source = "MYTHIC_PLUS", text = "M+"},
         {source = "CRAFTED", text = "Crafted"},
+        {source = "DELVE", text = "Delve"},
+        {source = "WORLD", text = "World"},
+        {source = "PVP", text = "PvP"},
+        {source = "UNKNOWN", text = "???"},
     }
     
     for _, legend in ipairs(legends) do
@@ -397,7 +489,7 @@ function KDT:SetupBisTab(f)
         text:SetText(legend.text)
         text:SetTextColor(0.8, 0.8, 0.8)
         
-        legendX = legendX + text:GetStringWidth() + 30
+        legendX = legendX + text:GetStringWidth() + 20
     end
     
     -- Edit hint
@@ -419,8 +511,8 @@ function KDT:SetupBisTab(f)
     e.refreshBtn = self:CreateButton(c, "Refresh", 80, 22)
     e.refreshBtn:SetPoint("BOTTOMLEFT", 10, 12)
     e.refreshBtn:SetScript("OnClick", function() 
-        if KDT.mainFrame and KDT.mainFrame.RefreshBis then
-            KDT.mainFrame:RefreshBis()
+        if KDT.MainFrame and KDT.MainFrame.RefreshBis then
+            KDT.MainFrame:RefreshBis()
         end
     end)
     
@@ -448,8 +540,8 @@ StaticPopupDialogs["KDT_RESET_BIS_CONFIRM"] = {
         if specID and specID > 0 then
             KDT:ResetAllCustomBis(specID)
             KDT:Print("BiS-Daten zurückgesetzt für " .. KDT:GetSpecName(specID))
-            if KDT.mainFrame and KDT.mainFrame.RefreshBis then
-                KDT.mainFrame:RefreshBis()
+            if KDT.MainFrame and KDT.MainFrame.RefreshBis then
+                KDT.MainFrame:RefreshBis()
             end
         end
     end,
@@ -491,16 +583,33 @@ function KDT:SetupBisRefresh(f)
         
         e.specInfo:SetText("|cFF" .. classColorHex .. className .. "|r - " .. specName)
         
-        -- Update source info
-        local hasCustom = KDT:HasCustomBisData(specID)
-        if hasCustom then
-            e.sourceInfo:SetText("|cFF00FF00Custom|r | Season 3")
-        else
-            e.sourceInfo:SetText("Data: |cFF00D4FFArchon.gg|r | Season 3")
+        -- Update mode buttons and source info
+        if e.UpdateModeButtons then
+            e.UpdateModeButtons()
         end
         
-        -- Get BiS data
-        local bisData = KDT:GetBisForSpec(specID)
+        -- Update PeaversBiS status
+        if e.peaversStatus then
+            if KDT:IsPeaversBisAvailable() then
+                e.peaversStatus:SetText("|cFF00FF00PeaversBiS active|r")
+            else
+                e.peaversStatus:SetText("|cFFFF8800PeaversBiS not found|r")
+            end
+        end
+        
+        -- Get BiS data (mode-aware)
+        local bisData = KDT:GetBisForSpec(specID, KDT.bisMode)
+        
+        -- WoW item cache: schedule ONE delayed re-refresh for async name resolution
+        -- Uses a generation counter to avoid stale timers from previous refreshes
+        self._bisRefreshGen = (self._bisRefreshGen or 0) + 1
+        local thisGen = self._bisRefreshGen
+        C_Timer.After(1.0, function()
+            if self._bisRefreshGen == thisGen and self.RefreshBis and self:IsVisible() then
+                self._bisRefreshGen = self._bisRefreshGen + 1  -- prevent re-trigger
+                self:RefreshBis()
+            end
+        end)
         
         -- Update scroll child width
         local scrollWidth = e.scroll:GetWidth() or 650
@@ -509,7 +618,6 @@ function KDT:SetupBisRefresh(f)
         -- Column positions
         local COL_SLOT = 10
         local COL_ITEM = 90
-        local COL_POP = scrollWidth - 75
         
         -- Create rows for each slot
         local yOffset = 0
@@ -547,27 +655,30 @@ function KDT:SetupBisRefresh(f)
                 -- Item name (line 1)
                 local itemText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                 itemText:SetPoint("TOPLEFT", COL_ITEM, -5)
-                itemText:SetPoint("RIGHT", row, "RIGHT", -80, 0)
+                itemText:SetPoint("RIGHT", row, "RIGHT", -10, 0)
                 itemText:SetJustifyH("LEFT")
                 
-                local itemColor = "|cFFFFFFFF"
-                if item.source == "RAID" then itemColor = "|cFFFF8000"
-                elseif item.source == "MYTHIC_PLUS" then itemColor = "|cFFA335EE"
-                elseif item.source == "CRAFTED" then itemColor = "|cFF00FF00" end
+                local sc = SOURCE_COLORS[item.source] or SOURCE_COLORS.UNKNOWN
+                local itemColor = string.format("|cFF%02x%02x%02x", sc[1]*255, sc[2]*255, sc[3]*255)
                 itemText:SetText(itemColor .. (item.name or "Unknown") .. "|r")
                 
                 -- Source detail (line 2)
                 local sourceText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
                 sourceText:SetPoint("TOPLEFT", itemText, "BOTTOMLEFT", 0, -1)
-                sourceText:SetPoint("RIGHT", row, "RIGHT", -80, 0)
+                sourceText:SetPoint("RIGHT", row, "RIGHT", -10, 0)
                 sourceText:SetJustifyH("LEFT")
                 local sourceLabel = KDT.BIS_SOURCE[item.source] or item.source
-                sourceText:SetText("|cFF666666" .. sourceLabel .. ": " .. (item.sourceDetail or "Unknown") .. "|r")
+                local detail = item.sourceDetail
+                if detail and detail ~= "" then
+                    sourceText:SetText("|cFF666666" .. sourceLabel .. ": " .. detail .. "|r")
+                else
+                    sourceText:SetText("|cFF666666" .. sourceLabel .. "|r")
+                end
                 
                 -- Enchant & Gems (line 3) - NO UNICODE SYMBOLS
                 local enhanceText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
                 enhanceText:SetPoint("TOPLEFT", sourceText, "BOTTOMLEFT", 0, -1)
-                enhanceText:SetPoint("RIGHT", row, "RIGHT", -80, 0)
+                enhanceText:SetPoint("RIGHT", row, "RIGHT", -10, 0)
                 enhanceText:SetJustifyH("LEFT")
                 
                 local enhanceParts = {}
@@ -588,12 +699,6 @@ function KDT:SetupBisRefresh(f)
                 else
                     enhanceText:SetText("|cFF444444-|r")
                 end
-                
-                -- Stats (right column)
-                local statsText = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                statsText:SetPoint("RIGHT", row, "RIGHT", -10, 0)
-                statsText:SetJustifyH("RIGHT")
-                statsText:SetText("|cFFAAFF00" .. (item.stats or "") .. "|r")
                 
                 -- Mouse interaction (use SetScript for click detection)
                 row:EnableMouse(true)
@@ -625,15 +730,15 @@ function KDT:SetupBisRefresh(f)
                     else
                         -- Fallback: Show KDT data only
                         GameTooltip:ClearLines()
-                        local nameColor = "|cFFFFFFFF"
-                        if data.source == "RAID" then nameColor = "|cFFFF8000"
-                        elseif data.source == "MYTHIC_PLUS" then nameColor = "|cFFA335EE"
-                        elseif data.source == "CRAFTED" then nameColor = "|cFF00FF00" end
+                        local ttc = SOURCE_COLORS[data.source] or SOURCE_COLORS.UNKNOWN
+                        local nameColor = string.format("|cFF%02x%02x%02x", ttc[1]*255, ttc[2]*255, ttc[3]*255)
                         GameTooltip:AddLine(nameColor .. (data.name or "Unknown") .. "|r", 1, 1, 1)
                         local sourceLabel = KDT.BIS_SOURCE[data.source] or data.source or "Unknown"
-                        GameTooltip:AddLine(sourceLabel .. ": " .. (data.sourceDetail or "Unknown"), 0.7, 0.7, 0.7)
-                        if data.stats and data.stats ~= "" then
-                            GameTooltip:AddLine("Stats: " .. data.stats, 0.6, 0.8, 1)
+                        local tipDetail = data.sourceDetail
+                        if tipDetail and tipDetail ~= "" then
+                            GameTooltip:AddLine(sourceLabel .. ": " .. tipDetail, 0.7, 0.7, 0.7)
+                        else
+                            GameTooltip:AddLine(sourceLabel, 0.7, 0.7, 0.7)
                         end
                         GameTooltip:AddLine(" ")
                         GameTooltip:AddLine("|cFFFFFF00Rechtsklick zum Bearbeiten|r")
@@ -663,95 +768,119 @@ function KDT:SetupBisRefresh(f)
     end
 end
 
--- Save custom BiS slot
+-- Save custom BiS slot (per mode)
 function KDT:SaveCustomBisSlot(specID, slot, itemData)
+    local mode = KDT.bisMode or "overall"
     if not KryosDungeonToolDB then KryosDungeonToolDB = {} end
     if not KryosDungeonToolDB.customBis then KryosDungeonToolDB.customBis = {} end
     if not KryosDungeonToolDB.customBis[specID] then KryosDungeonToolDB.customBis[specID] = {} end
+    if not KryosDungeonToolDB.customBis[specID][mode] then KryosDungeonToolDB.customBis[specID][mode] = {} end
     
-    KryosDungeonToolDB.customBis[specID][slot] = itemData
+    KryosDungeonToolDB.customBis[specID][mode][slot] = itemData
 end
 
--- Reset custom BiS slot to default
+-- Reset custom BiS slot to default (per mode)
 function KDT:ResetCustomBisSlot(specID, slot)
-    if KryosDungeonToolDB and KryosDungeonToolDB.customBis and KryosDungeonToolDB.customBis[specID] then
-        KryosDungeonToolDB.customBis[specID][slot] = nil
+    local mode = KDT.bisMode or "overall"
+    if KryosDungeonToolDB and KryosDungeonToolDB.customBis 
+       and KryosDungeonToolDB.customBis[specID] 
+       and KryosDungeonToolDB.customBis[specID][mode] then
+        KryosDungeonToolDB.customBis[specID][mode][slot] = nil
     end
 end
 
--- Reset all custom BiS for spec
+-- Reset all custom BiS for spec in current mode
 function KDT:ResetAllCustomBis(specID)
-    if KryosDungeonToolDB and KryosDungeonToolDB.customBis then
-        KryosDungeonToolDB.customBis[specID] = nil
+    local mode = KDT.bisMode or "overall"
+    if KryosDungeonToolDB and KryosDungeonToolDB.customBis 
+       and KryosDungeonToolDB.customBis[specID] then
+        KryosDungeonToolDB.customBis[specID][mode] = nil
     end
 end
 
--- Check if spec has custom data
+-- Check if spec has custom data for current mode
 function KDT:HasCustomBisData(specID)
-    if KryosDungeonToolDB and KryosDungeonToolDB.customBis and KryosDungeonToolDB.customBis[specID] then
-        for _ in pairs(KryosDungeonToolDB.customBis[specID]) do
+    local mode = KDT.bisMode or "overall"
+    if KryosDungeonToolDB and KryosDungeonToolDB.customBis 
+       and KryosDungeonToolDB.customBis[specID]
+       and KryosDungeonToolDB.customBis[specID][mode] then
+        for _ in pairs(KryosDungeonToolDB.customBis[specID][mode]) do
             return true
         end
     end
     return false
 end
 
--- Override GetBisForSpec to include custom data
-local baseGetBisForSpec = nil
-function KDT:GetBisForSpec(specID)
-    -- Get base data
-    local baseData = {}
-    
-    -- Map Hero Talent specs to their base spec for BiS data lookup
+-- Helper: get custom data for a spec+mode
+local function GetCustomDataForMode(specID, lookupSpecID, mode)
+    if not KryosDungeonToolDB or not KryosDungeonToolDB.customBis then return nil end
+    local specData = KryosDungeonToolDB.customBis[specID] or KryosDungeonToolDB.customBis[lookupSpecID]
+    if not specData then return nil end
+    return specData[mode]
+end
+
+-- Override GetBisForSpec to support modes: overall, raid, dungeon, custom
+-- Mode-aware BiS data retrieval (overrides base from BisData.lua)
+function KDT:GetBisForSpec(specID, mode)
+    mode = mode or KDT.bisMode or "overall"
     local lookupSpecID = self:GetBaseSpecID(specID)
-    
-    -- Check default data first (use lookupSpecID for data, but specID for custom)
-    if KDT.BIS_DATA and KDT.BIS_DATA[lookupSpecID] then
-        for slot, item in pairs(KDT.BIS_DATA[lookupSpecID]) do
-            if item then
-                baseData[slot] = {}
-                for k, v in pairs(item) do
-                    baseData[slot][k] = v
-                end
-            end
-        end
-    else
-        -- Use default placeholder data
-        local defaultData = KDT:GetDefaultBisData()
-        for slot, item in pairs(defaultData) do
-            baseData[slot] = {}
-            for k, v in pairs(item) do
-                baseData[slot][k] = v
-            end
-        end
-    end
-    
-    -- Override with custom data (check both original specID and base specID)
-    local customSpecID = specID
-    if KryosDungeonToolDB and KryosDungeonToolDB.customBis then
-        -- First check custom data for the actual specID
-        if KryosDungeonToolDB.customBis[specID] then
-            customSpecID = specID
-        -- Then fallback to base spec custom data
-        elseif lookupSpecID ~= specID and KryosDungeonToolDB.customBis[lookupSpecID] then
-            customSpecID = lookupSpecID
-        end
-        
-        if KryosDungeonToolDB.customBis[customSpecID] then
-            for slot, customItem in pairs(KryosDungeonToolDB.customBis[customSpecID]) do
+
+    -- Helper to apply custom overrides from a specific mode's custom data
+    local function ApplyCustomOverrides(baseData, forMode)
+        local customData = GetCustomDataForMode(specID, lookupSpecID, forMode)
+        if customData then
+            for slot, ci in pairs(customData) do
                 baseData[slot] = {
-                    name = customItem.name,
-                    itemID = customItem.id or customItem.itemID or 0,
-                    source = customItem.source or "RAID",
-                    sourceDetail = customItem.detail or customItem.sourceDetail or "",
-                    stats = customItem.stats or "",
-                    enchant = customItem.enchant,
-                    gems = customItem.gems,
+                    name = ci.name,
+                    itemID = ci.id or ci.itemID or 0,
+                    source = ci.source or "RAID",
+                    sourceDetail = ci.detail or ci.sourceDetail or "",
+                    enchant = ci.enchant,
+                    gems = ci.gems,
                 }
             end
         end
     end
-    
+
+    -- =========== CUSTOM MODE: Only user edits ===========
+    if mode == "custom" then
+        local baseData = KDT:GetDefaultBisData()
+        ApplyCustomOverrides(baseData, "custom")
+        return baseData
+    end
+
+    -- =========== PEAVERS DATA MODES: overall, raid, dungeon ===========
+    local peaversData = nil
+    if mode == "overall" then
+        peaversData = self:GetBisOverallFromPeavers(lookupSpecID)
+    elseif mode == "raid" then
+        peaversData = self:GetBisFromPeavers(lookupSpecID, "raid")
+    elseif mode == "dungeon" then
+        peaversData = self:GetBisFromPeavers(lookupSpecID, "dungeon")
+    end
+
+    if peaversData and next(peaversData) then
+        local baseData = {}
+        for slot, item in pairs(peaversData) do
+            baseData[slot] = {}
+            for k, v in pairs(item) do baseData[slot][k] = v end
+        end
+
+        -- Fill missing slots
+        for _, slot in ipairs(KDT.SLOT_ORDER) do
+            if not baseData[slot] then
+                baseData[slot] = { name = "No data", itemID = 0, source = "UNKNOWN", sourceDetail = "" }
+            end
+        end
+
+        -- Overlay custom edits for THIS mode only
+        ApplyCustomOverrides(baseData, mode)
+        return baseData
+    end
+
+    -- =========== FALLBACK: PeaversBiS not available ===========
+    local baseData = KDT:GetDefaultBisData()
+    ApplyCustomOverrides(baseData, mode)
     return baseData
 end
 
@@ -853,8 +982,8 @@ function KDT:ShowBisImportExportDialog()
             local success, result = KDT:ImportBisList(text)
             if success then
                 importExportFrame.status:SetText("|cFF00FF00Import erfolgreich für Spec " .. result .. "!|r")
-                if KDT.mainFrame and KDT.mainFrame.RefreshBis then
-                    KDT.mainFrame:RefreshBis()
+                if KDT.MainFrame and KDT.MainFrame.RefreshBis then
+                    KDT.MainFrame:RefreshBis()
                 end
             else
                 importExportFrame.status:SetText("|cFFFF0000Fehler: " .. (result or "Unbekannt") .. "|r")
@@ -927,10 +1056,12 @@ function KDT:ImportBisList(str)
         return false, "Ungültige Spec-ID"
     end
     
-    -- Initialize storage
+    -- Initialize storage — imports go to "custom" mode
+    local mode = "custom"
     if not KryosDungeonToolDB then KryosDungeonToolDB = {} end
     if not KryosDungeonToolDB.customBis then KryosDungeonToolDB.customBis = {} end
-    KryosDungeonToolDB.customBis[specID] = {}
+    if not KryosDungeonToolDB.customBis[specID] then KryosDungeonToolDB.customBis[specID] = {} end
+    KryosDungeonToolDB.customBis[specID][mode] = {}
     
     -- Parse slots
     for i = 3, #parts do
@@ -951,7 +1082,7 @@ function KDT:ImportBisList(str)
             
             if enchant == 0 then enchant = nil end
             
-            KryosDungeonToolDB.customBis[specID][slot] = {
+            KryosDungeonToolDB.customBis[specID][mode][slot] = {
                 itemID = itemID,
                 id = itemID,
                 name = "Imported Item",
